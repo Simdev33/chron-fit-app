@@ -1,0 +1,1088 @@
+import Slider from '@react-native-community/slider';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Camera, ChevronLeft } from 'lucide-react-native';
+import React, { useState } from 'react';
+import {
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import {
+  GlassCard,
+  SectionHeader,
+  TagInput,
+  TogglePill,
+  useKeyboardHeight,
+  usePalette,
+} from '@/components/figma/ui';
+import { AVATAR_COLORS, blue, font, violet } from '@/constants/figma';
+import { useProfile } from '@/context/ProfileContext';
+
+const SEGMENTS = [
+  'Terminális ileum',
+  'Vakbél',
+  'Felszálló vastagbél',
+  'Haránt vastagbél',
+  'Leszálló vastagbél',
+  'Szigmabél',
+  'Végbél',
+];
+
+const CONDITIONS = ['Crohn-betegség', 'Colitis ulcerosa', 'IBD – nem besorolt'];
+const STOMA_TYPES = ['Ileosztóma', 'Kolosztóma', 'Urosztóma'];
+const FIBER_LABELS = ['Nagyon alacsony', 'Alacsony', 'Közepes', 'Magas', 'Nagyon magas'];
+const DIET_APPROACHES = [
+  { id: 'low-residue', label: 'Salakszegény' },
+  { id: 'standard', label: 'Normál' },
+  { id: 'high-fiber', label: 'Rostdús' },
+];
+const FOCUS = [
+  { id: 'weightlifting', label: 'Súlyzós', icon: '🏋️' },
+  { id: 'cardio', label: 'Kardió', icon: '🏃' },
+  { id: 'bodyweight', label: 'Saját testsúly', icon: '💪' },
+  { id: 'yoga', label: 'Jóga', icon: '🧘' },
+  { id: 'swimming', label: 'Úszás', icon: '🏊' },
+  { id: 'cycling', label: 'Kerékpár', icon: '🚴' },
+];
+
+export function ProfileModal({
+  visible,
+  onClose,
+}: {
+  visible: boolean;
+  onClose: () => void;
+}) {
+  const p = usePalette();
+  const insets = useSafeAreaInsets();
+  const keyboardHeight = useKeyboardHeight();
+  const { profile, updateProfile } = useProfile();
+  const remission = profile.phase === 'remission';
+
+  const [name, setName] = useState(profile.name);
+  const [email, setEmail] = useState('');
+  const [age, setAge] = useState(profile.age);
+  const [weight, setWeight] = useState(profile.weightKg);
+  const [height, setHeight] = useState(profile.heightCm);
+  const [colorIdx, setColorIdx] = useState(profile.avatarColorIdx);
+  const [condition, setCondition] = useState(CONDITIONS[0]);
+  const [segments, setSegments] = useState<string[]>([
+    'Terminális ileum',
+    'Vakbél',
+  ]);
+  const [meds, setMeds] = useState<string[]>([
+    'Mesalamine 800mg',
+    'Azathioprine 100mg',
+  ]);
+  const [bio, setBio] = useState<string[]>([]);
+  const [vitamins, setVitamins] = useState<string[]>([
+    'D3-vitamin 2000NE',
+    'Vas 65mg',
+  ]);
+  const [supplements, setSupplements] = useState<string[]>(['Whey izolátum']);
+  const [triggers, setTriggers] = useState<string[]>(
+    profile.triggerFoods.length
+      ? profile.triggerFoods
+      : ['Magvak', 'Tejtermékek', 'Csípős ételek'],
+  );
+  const [stoma, setStoma] = useState(false);
+  const [stomaType, setStomaType] = useState('');
+  const [surgery, setSurgery] = useState(false);
+  const [surgeryText, setSurgeryText] = useState('');
+  const [joints, setJoints] = useState(false);
+  const [skin, setSkin] = useState(false);
+  const [fiber, setFiber] = useState(2);
+  const [dietApproach, setDietApproach] = useState('low-residue');
+  const [frequency, setFrequency] = useState(3);
+  const [focus, setFocus] = useState<string[]>(['cardio']);
+
+  const toggleIn = (list: string[], set: (v: string[]) => void, v: string) =>
+    set(list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
+
+  const save = () => {
+    updateProfile({
+      name: name || profile.name,
+      age,
+      weightKg: weight,
+      heightCm: height,
+      triggerFoods: triggers,
+    });
+    onClose();
+  };
+
+  const setPhase = (phase: 'remission' | 'flare') => updateProfile({ phase });
+
+  const inputStyle = {
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontSize: 14,
+    fontFamily: font.body,
+    color: p.text,
+    backgroundColor: p.fieldBgStrong,
+    borderWidth: 1,
+    borderColor: p.fieldBorder,
+  } as const;
+
+  const smallLabel = {
+    fontSize: 11,
+    fontFamily: font.bodySemi,
+    marginBottom: 6,
+    color: p.muted,
+  } as const;
+
+  return (
+    <Modal
+      visible={visible}
+      animationType="slide"
+      statusBarTranslucent
+      navigationBarTranslucent
+      onRequestClose={onClose}
+      presentationStyle="fullScreen">
+      <KeyboardAvoidingView
+        style={{
+          flex: 1,
+          backgroundColor: p.bg,
+          paddingBottom: keyboardHeight,
+        }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <View
+          style={[
+            styles.header,
+            { paddingTop: insets.top + 8, borderBottomColor: p.divider },
+          ]}>
+          <Pressable
+            onPress={onClose}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+            <ChevronLeft size={20} color={p.muted} />
+            <Text
+              style={{ fontSize: 14, fontFamily: font.bodySemi, color: p.muted }}>
+              Vissza
+            </Text>
+          </Pressable>
+          <Text
+            style={{ fontFamily: font.displayX, fontSize: 16, color: p.text }}>
+            Profilom
+          </Text>
+          <Pressable onPress={save}>
+            <LinearGradient
+              colors={[violet[600], violet[700]]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.saveChip}>
+              <Text
+                style={{ fontFamily: font.display, fontSize: 12, color: '#fff' }}>
+                Mentés
+              </Text>
+            </LinearGradient>
+          </Pressable>
+        </View>
+
+        <ScrollView
+          style={{ flex: 1 }}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}>
+          {/* Profilkép */}
+          <View style={{ paddingHorizontal: 20, paddingTop: 24, paddingBottom: 8 }}>
+            <Text
+              style={{
+                fontFamily: font.bodySemi,
+                fontSize: 12,
+                textTransform: 'uppercase',
+                letterSpacing: 2,
+                marginBottom: 16,
+                color: p.dark ? violet[400] : violet[600],
+              }}>
+              Profilkép
+            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+              <LinearGradient
+                colors={AVATAR_COLORS[colorIdx]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.bigAvatar}>
+                <Text
+                  style={{
+                    fontFamily: font.displayX,
+                    fontSize: 30,
+                    color: '#fff',
+                  }}>
+                  {(name || 'A')[0].toUpperCase()}
+                </Text>
+              </LinearGradient>
+              <View style={{ flex: 1 }}>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={{
+                    gap: 8,
+                    padding: 4,
+                    paddingBottom: 12,
+                  }}>
+                  {AVATAR_COLORS.map((c, idx) => (
+                    <Pressable
+                      key={idx}
+                      onPress={() => {
+                        setColorIdx(idx);
+                        updateProfile({ avatarColorIdx: idx });
+                      }}>
+                      <LinearGradient
+                        colors={c}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                        style={[
+                          styles.colorSwatch,
+                          colorIdx === idx
+                            ? {
+                                borderWidth: 2,
+                                borderColor: violet[400],
+                                transform: [{ scale: 1.1 }],
+                              }
+                            : { opacity: 0.6 },
+                        ]}>
+                        <Text
+                          style={{
+                            fontFamily: font.display,
+                            fontSize: 14,
+                            color: '#fff',
+                          }}>
+                          {(name || 'A')[0].toUpperCase()}
+                        </Text>
+                      </LinearGradient>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+                <Pressable
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 8,
+                    alignSelf: 'flex-start',
+                    paddingHorizontal: 12,
+                    paddingVertical: 8,
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderColor: p.dark
+                      ? 'rgba(255,255,255,0.15)'
+                      : '#E9D5FF',
+                    backgroundColor: p.fieldBg,
+                  }}>
+                  <Camera size={13} color={p.muted} />
+                  <Text
+                    style={{
+                      fontSize: 12,
+                      fontFamily: font.bodySemi,
+                      color: p.muted,
+                    }}>
+                    Fotó feltöltése
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+
+          {/* Egészségi állapot */}
+          <View style={{ paddingHorizontal: 20, marginTop: 8 }}>
+            <LinearGradient
+              colors={
+                remission
+                  ? ['rgba(124,58,237,0.55)', 'rgba(109,40,217,0.35)']
+                  : ['rgba(59,130,246,0.45)', 'rgba(37,99,235,0.3)']
+              }
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={{
+                borderRadius: 24,
+                padding: 20,
+                borderWidth: 1,
+                borderColor: remission
+                  ? 'rgba(167,139,250,0.3)'
+                  : 'rgba(147,197,253,0.3)',
+              }}>
+              <Text style={styles.cardEyebrow}>Jelenlegi egészségi állapot</Text>
+              <Text
+                style={{
+                  fontFamily: font.displayX,
+                  fontSize: 18,
+                  color: '#fff',
+                  marginBottom: 12,
+                }}>
+                {remission ? '✨ Jelenleg remisszióban' : '🌡️ Aktív fellángolás'}
+              </Text>
+              <Text
+                style={{
+                  fontSize: 12,
+                  fontFamily: font.body,
+                  color: 'rgba(255,255,255,0.6)',
+                  marginBottom: 16,
+                }}>
+                {remission
+                  ? 'Az Életfa virágzik. Csak így tovább!'
+                  : 'Fellángolás mód aktív. Az ajánlásokat a komfortodhoz igazítottuk.'}
+              </Text>
+              <View
+                style={{
+                  flexDirection: 'row',
+                  gap: 4,
+                  padding: 4,
+                  borderRadius: 16,
+                  backgroundColor: p.dark
+                    ? 'rgba(0,0,0,0.2)'
+                    : 'rgba(0,0,0,0.1)',
+                }}>
+                {(['remission', 'flare'] as const).map((phase) => {
+                  const active = profile.phase === phase;
+                  return (
+                    <Pressable
+                      key={phase}
+                      onPress={() => setPhase(phase)}
+                      style={{
+                        flex: 1,
+                        paddingVertical: 10,
+                        borderRadius: 12,
+                        alignItems: 'center',
+                        backgroundColor: active ? '#fff' : 'transparent',
+                      }}>
+                      <Text
+                        style={{
+                          fontFamily: font.display,
+                          fontSize: 14,
+                          color: active
+                            ? phase === 'remission'
+                              ? violet[700]
+                              : blue[600]
+                            : 'rgba(255,255,255,0.6)',
+                        }}>
+                        {phase === 'remission'
+                          ? '✨ Remisszió'
+                          : '🌡️ Fellángolás'}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </LinearGradient>
+          </View>
+
+          {/* Alapadatok */}
+          <SectionHeader title="Alapadatok" />
+          <View style={{ paddingHorizontal: 20, gap: 12 }}>
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={smallLabel}>Teljes név</Text>
+                <TextInput
+                  value={name}
+                  onChangeText={setName}
+                  placeholder="Neved"
+                  placeholderTextColor={p.placeholder}
+                  style={inputStyle}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={smallLabel}>Életkor</Text>
+                <TextInput
+                  value={age}
+                  onChangeText={setAge}
+                  placeholder="Év"
+                  keyboardType="numeric"
+                  placeholderTextColor={p.placeholder}
+                  style={inputStyle}
+                />
+              </View>
+            </View>
+            <View>
+              <Text style={smallLabel}>E-mail</Text>
+              <TextInput
+                value={email}
+                onChangeText={setEmail}
+                placeholder="E-mail cím"
+                keyboardType="email-address"
+                placeholderTextColor={p.placeholder}
+                style={inputStyle}
+              />
+            </View>
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={smallLabel}>Testsúly (kg)</Text>
+                <TextInput
+                  value={weight}
+                  onChangeText={setWeight}
+                  placeholder="kg"
+                  keyboardType="numeric"
+                  placeholderTextColor={p.placeholder}
+                  style={inputStyle}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={smallLabel}>Magasság (cm)</Text>
+                <TextInput
+                  value={height}
+                  onChangeText={setHeight}
+                  placeholder="cm"
+                  keyboardType="numeric"
+                  placeholderTextColor={p.placeholder}
+                  style={inputStyle}
+                />
+              </View>
+            </View>
+          </View>
+
+          {/* Diagnózis */}
+          <SectionHeader
+            title="Diagnózis"
+            subtitle="Segít személyre szabni az étrend- és mozgástanácsokat"
+          />
+          <View style={{ paddingHorizontal: 20, gap: 16 }}>
+            <View>
+              <Text style={smallLabel}>Betegség</Text>
+              <View style={{ gap: 8 }}>
+                {CONDITIONS.map((c) => {
+                  const active = condition === c;
+                  return (
+                    <Pressable
+                      key={c}
+                      onPress={() => setCondition(c)}
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 12,
+                        paddingHorizontal: 16,
+                        paddingVertical: 12,
+                        borderRadius: 16,
+                        borderWidth: 2,
+                        borderColor: active ? violet[500] : p.fieldBorder,
+                        backgroundColor: active
+                          ? 'rgba(139,92,246,0.15)'
+                          : p.fieldBg,
+                      }}>
+                      <View
+                        style={{
+                          width: 16,
+                          height: 16,
+                          borderRadius: 999,
+                          borderWidth: 2,
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          borderColor: active
+                            ? violet[500]
+                            : p.dark
+                              ? 'rgba(255,255,255,0.3)'
+                              : '#D8B4FE',
+                          backgroundColor: active ? violet[500] : 'transparent',
+                        }}>
+                        {active ? (
+                          <View
+                            style={{
+                              width: 6,
+                              height: 6,
+                              borderRadius: 999,
+                              backgroundColor: '#fff',
+                            }}
+                          />
+                        ) : null}
+                      </View>
+                      <Text
+                        style={{
+                          fontSize: 14,
+                          fontFamily: active ? font.bodySemi : font.body,
+                          color: active
+                            ? p.dark
+                              ? violet[300]
+                              : violet[700]
+                            : p.dark
+                              ? 'rgba(255,255,255,0.7)'
+                              : '#1A0D35',
+                        }}>
+                        {c}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
+            <View>
+              <Text style={smallLabel}>
+                Érintett bélszakaszok{' '}
+                <Text style={{ fontFamily: font.body }}>
+                  (több is jelölhető)
+                </Text>
+              </Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                {SEGMENTS.map((s) => {
+                  const active = segments.includes(s);
+                  return (
+                    <Pressable
+                      key={s}
+                      onPress={() => toggleIn(segments, setSegments, s)}
+                      style={{
+                        paddingHorizontal: 12,
+                        paddingVertical: 6,
+                        borderRadius: 999,
+                        borderWidth: 2,
+                        borderColor: active ? violet[500] : p.fieldBorder,
+                        backgroundColor: active
+                          ? 'rgba(139,92,246,0.2)'
+                          : p.fieldBg,
+                      }}>
+                      <Text
+                        style={{
+                          fontSize: 12,
+                          fontFamily: font.bodySemi,
+                          color: active
+                            ? p.dark
+                              ? violet[300]
+                              : violet[700]
+                            : p.muted,
+                        }}>
+                        {s}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
+          </View>
+
+          {/* Gyógyszerek */}
+          <SectionHeader
+            title="Gyógyszerek és étrend-kiegészítők"
+            subtitle="Minden bejegyzést megosztunk az AI asszisztenseddel"
+          />
+          <View style={{ paddingHorizontal: 20, gap: 20 }}>
+            {(
+              [
+                ['Felírt gyógyszerek', meds, setMeds, 'pl. Mesalamine 800mg'],
+                [
+                  'Biológiai terápiák',
+                  bio,
+                  setBio,
+                  'pl. Vedolizumab, Adalimumab',
+                ],
+                [
+                  'Napi vitaminok',
+                  vitamins,
+                  setVitamins,
+                  'pl. D3-vitamin, vas, kalcium',
+                ],
+                [
+                  'Fitnesz kiegészítők',
+                  supplements,
+                  setSupplements,
+                  'pl. Whey izolátum, kreatin',
+                ],
+              ] as [string, string[], (v: string[]) => void, string][]
+            ).map(([label, tags, setTags, placeholder]) => (
+              <View key={label}>
+                <Text
+                  style={{
+                    fontFamily: font.display,
+                    fontSize: 14,
+                    marginBottom: 8,
+                    color: p.text,
+                  }}>
+                  {label}
+                </Text>
+                <TagInput tags={tags} setTags={setTags} placeholder={placeholder} />
+              </View>
+            ))}
+          </View>
+
+          {/* Trigger ételek */}
+          <SectionHeader
+            title="Trigger ételek"
+            subtitle="Ételek, amelyek rendszeresen rontják a tüneteidet"
+          />
+          <View style={{ paddingHorizontal: 20 }}>
+            <TagInput
+              tags={triggers}
+              setTags={setTriggers}
+              placeholder="pl. tejtermék, magvak, alkohol"
+            />
+          </View>
+
+          {/* Kórtörténet */}
+          <SectionHeader
+            title="Kórtörténet és anatómia"
+            subtitle="Kritikus háttér a biztonságos edzésajánlásokhoz"
+          />
+          <View style={{ paddingHorizontal: 20, gap: 16 }}>
+            <GlassCard style={{ padding: 16 }}>
+              <View style={styles.toggleHead}>
+                <View style={{ flex: 1 }}>
+                  <Text
+                    style={{
+                      fontFamily: font.display,
+                      fontSize: 14,
+                      color: p.text,
+                    }}>
+                    Van jelenleg sztómád?
+                  </Text>
+                  <Text
+                    style={{
+                      fontSize: 12,
+                      fontFamily: font.body,
+                      color: p.muted,
+                      marginTop: 2,
+                    }}>
+                    A törzsizom-gyakorlatokat és övjavaslatokat ehhez igazítjuk.
+                  </Text>
+                </View>
+                <TogglePill
+                  large
+                  value={stoma}
+                  onChange={(v) => {
+                    setStoma(v);
+                    if (!v) setStomaType('');
+                  }}
+                />
+              </View>
+              {stoma ? (
+                <View style={{ marginTop: 12 }}>
+                  <Text style={smallLabel}>Sztóma típusa</Text>
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    {STOMA_TYPES.map((t) => {
+                      const active = stomaType === t;
+                      return (
+                        <Pressable
+                          key={t}
+                          onPress={() => setStomaType(t)}
+                          style={{
+                            flex: 1,
+                            paddingVertical: 8,
+                            borderRadius: 12,
+                            alignItems: 'center',
+                            borderWidth: 2,
+                            borderColor: active ? violet[500] : p.fieldBorder,
+                            backgroundColor: active
+                              ? 'rgba(139,92,246,0.2)'
+                              : p.fieldBg,
+                          }}>
+                          <Text
+                            style={{
+                              fontSize: 12,
+                              fontFamily: font.display,
+                              color: active
+                                ? p.dark
+                                  ? violet[300]
+                                  : violet[700]
+                                : p.muted,
+                            }}>
+                            {t}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+              ) : null}
+            </GlassCard>
+
+            <GlassCard style={{ padding: 16 }}>
+              <View style={styles.toggleHead}>
+                <View style={{ flex: 1 }}>
+                  <Text
+                    style={{
+                      fontFamily: font.display,
+                      fontSize: 14,
+                      color: p.text,
+                    }}>
+                    Korábbi bélműtét vagy reszekció?
+                  </Text>
+                  <Text
+                    style={{
+                      fontSize: 12,
+                      fontFamily: font.body,
+                      color: p.muted,
+                      marginTop: 2,
+                    }}>
+                    Befolyásolja a has- és törzsizom-, valamint a nehéz emelés
+                    tanácsokat.
+                  </Text>
+                </View>
+                <TogglePill
+                  large
+                  value={surgery}
+                  onChange={(v) => {
+                    setSurgery(v);
+                    if (!v) setSurgeryText('');
+                  }}
+                />
+              </View>
+              {surgery ? (
+                <TextInput
+                  multiline
+                  numberOfLines={2}
+                  value={surgeryText}
+                  onChangeText={setSurgeryText}
+                  placeholder="pl. jobb oldali hemikolektómia 2021, ileocökális reszekció…"
+                  placeholderTextColor={p.placeholder}
+                  style={[
+                    inputStyle,
+                    { marginTop: 12, minHeight: 64, textAlignVertical: 'top' },
+                  ]}
+                />
+              ) : null}
+            </GlassCard>
+          </View>
+
+          {/* Társbetegségek */}
+          <SectionHeader
+            title="Társbetegségek és ízületek"
+            subtitle="Gyakori IBD-hez társuló, bélrendszeren kívüli tünetek"
+          />
+          <View style={{ paddingHorizontal: 20, gap: 12 }}>
+            {(
+              [
+                [
+                  'Ízületi gyulladás vagy artritisz',
+                  'IBD-hez társuló ízületi érintettség — befolyásolja a nagy terhelésű edzéseket.',
+                  joints,
+                  setJoints,
+                ],
+                [
+                  'IBD-hez köthető bőrproblémák',
+                  'Pyoderma gangrenosum, erythema nodosum vagy egyéb bőrtünetek.',
+                  skin,
+                  setSkin,
+                ],
+              ] as [string, string, boolean, (v: boolean) => void][]
+            ).map(([label, desc, val, set]) => (
+              <GlassCard key={label} style={{ padding: 16 }}>
+                <View style={styles.toggleHead}>
+                  <View style={{ flex: 1 }}>
+                    <Text
+                      style={{
+                        fontFamily: font.display,
+                        fontSize: 14,
+                        color: p.text,
+                      }}>
+                      {label}
+                    </Text>
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        fontFamily: font.body,
+                        lineHeight: 18,
+                        color: p.muted,
+                        marginTop: 2,
+                      }}>
+                      {desc}
+                    </Text>
+                  </View>
+                  <TogglePill large value={val} onChange={set} />
+                </View>
+              </GlassCard>
+            ))}
+          </View>
+
+          {/* Étrendi tolerancia */}
+          <SectionHeader
+            title="Étrendi tolerancia"
+            subtitle="Személyre szabott étel- és receptajánlásokhoz"
+          />
+          <View style={{ paddingHorizontal: 20, gap: 16 }}>
+            <GlassCard style={{ padding: 16 }}>
+              <Text
+                style={{
+                  fontFamily: font.display,
+                  fontSize: 14,
+                  color: p.text,
+                }}>
+                Rost-tolerancia
+              </Text>
+              <View style={[styles.toggleHead, { marginTop: 4, marginBottom: 8 }]}>
+                <Text
+                  style={{ fontSize: 12, fontFamily: font.body, color: p.muted }}>
+                  Mennyire tolerálod az étkezési rostot?
+                </Text>
+                <Text
+                  style={{
+                    fontSize: 12,
+                    fontFamily: font.display,
+                    color: violet[400],
+                  }}>
+                  {FIBER_LABELS[fiber - 1]}
+                </Text>
+              </View>
+              <Slider
+                minimumValue={1}
+                maximumValue={5}
+                step={1}
+                value={fiber}
+                onValueChange={setFiber}
+                minimumTrackTintColor={violet[500]}
+                maximumTrackTintColor={p.toggleOff}
+                thumbTintColor={violet[500]}
+              />
+              <View style={styles.toggleHead}>
+                {FIBER_LABELS.map((l) => (
+                  <Text
+                    key={l}
+                    style={{ fontSize: 8, fontFamily: font.body, color: p.muted }}>
+                    {l}
+                  </Text>
+                ))}
+              </View>
+            </GlassCard>
+            <View>
+              <Text style={smallLabel}>Jelenlegi étrendi megközelítés</Text>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                {DIET_APPROACHES.map((d) => {
+                  const active = dietApproach === d.id;
+                  return (
+                    <Pressable
+                      key={d.id}
+                      onPress={() => setDietApproach(d.id)}
+                      style={{
+                        flex: 1,
+                        paddingVertical: 12,
+                        borderRadius: 16,
+                        alignItems: 'center',
+                        borderWidth: 2,
+                        borderColor: active ? violet[500] : p.fieldBorder,
+                        backgroundColor: active
+                          ? 'rgba(139,92,246,0.2)'
+                          : p.fieldBg,
+                      }}>
+                      <Text
+                        style={{
+                          fontSize: 12,
+                          fontFamily: font.display,
+                          color: active
+                            ? p.dark
+                              ? violet[300]
+                              : violet[700]
+                            : p.muted,
+                        }}>
+                        {d.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
+          </View>
+
+          {/* Fitnesz szokások */}
+          <SectionHeader
+            title="Fitnesz szokások és célok"
+            subtitle="Segít kalibrálni a makrócélokat és edzésterveket"
+          />
+          <View style={{ paddingHorizontal: 20, gap: 20, paddingBottom: 16 }}>
+            <GlassCard style={{ padding: 16 }}>
+              <View style={styles.toggleHead}>
+                <View>
+                  <Text
+                    style={{
+                      fontFamily: font.display,
+                      fontSize: 14,
+                      color: p.text,
+                    }}>
+                    Heti edzésgyakoriság
+                  </Text>
+                  <Text
+                    style={{
+                      fontSize: 12,
+                      fontFamily: font.body,
+                      color: p.muted,
+                    }}>
+                    Hány alkalom hetente?
+                  </Text>
+                </View>
+                <Text
+                  style={{
+                    fontFamily: font.displayX,
+                    fontSize: 24,
+                    color: violet[400],
+                  }}>
+                  {frequency}
+                  <Text
+                    style={{
+                      fontSize: 12,
+                      fontFamily: font.body,
+                      color: p.muted,
+                    }}>
+                    {' '}
+                    nap
+                  </Text>
+                </Text>
+              </View>
+              <View style={{ flexDirection: 'row', gap: 6, marginTop: 12 }}>
+                {[1, 2, 3, 4, 5, 6, 7].map((n) => {
+                  const active = frequency === n;
+                  return (
+                    <Pressable
+                      key={n}
+                      onPress={() => setFrequency(n)}
+                      style={{ flex: 1 }}>
+                      {active ? (
+                        <LinearGradient
+                          colors={[violet[600], violet[700]]}
+                          start={{ x: 0, y: 0 }}
+                          end={{ x: 0, y: 1 }}
+                          style={styles.freqBtn}>
+                          <Text
+                            style={{
+                              fontFamily: font.display,
+                              fontSize: 14,
+                              color: '#fff',
+                            }}>
+                            {n}
+                          </Text>
+                        </LinearGradient>
+                      ) : (
+                        <View
+                          style={[
+                            styles.freqBtn,
+                            {
+                              backgroundColor: p.fieldBgStrong,
+                              borderWidth: 1,
+                              borderColor: p.fieldBorder,
+                            },
+                          ]}>
+                          <Text
+                            style={{
+                              fontFamily: font.display,
+                              fontSize: 14,
+                              color: p.muted,
+                            }}>
+                            {n}
+                          </Text>
+                        </View>
+                      )}
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </GlassCard>
+
+            <View>
+              <Text style={smallLabel}>
+                Elsődleges fókusz{' '}
+                <Text style={{ fontFamily: font.body }}>
+                  (több is jelölhető)
+                </Text>
+              </Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                {FOCUS.map((f) => {
+                  const active = focus.includes(f.id);
+                  return (
+                    <Pressable
+                      key={f.id}
+                      onPress={() => toggleIn(focus, setFocus, f.id)}
+                      style={{
+                        width: '31%',
+                        flexGrow: 1,
+                        alignItems: 'center',
+                        paddingVertical: 12,
+                        borderRadius: 16,
+                        borderWidth: 2,
+                        borderColor: active ? violet[500] : p.fieldBorder,
+                        backgroundColor: active
+                          ? 'rgba(139,92,246,0.2)'
+                          : p.fieldBg,
+                      }}>
+                      <Text style={{ fontSize: 20, marginBottom: 4 }}>
+                        {f.icon}
+                      </Text>
+                      <Text
+                        style={{
+                          fontSize: 12,
+                          fontFamily: font.display,
+                          color: active
+                            ? p.dark
+                              ? violet[300]
+                              : violet[700]
+                            : p.text,
+                        }}>
+                        {f.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
+
+            <Pressable onPress={save}>
+              <LinearGradient
+                colors={[violet[600], violet[700]]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={{
+                  paddingVertical: 16,
+                  borderRadius: 16,
+                  alignItems: 'center',
+                }}>
+                <Text
+                  style={{
+                    fontFamily: font.display,
+                    fontSize: 16,
+                    color: '#fff',
+                  }}>
+                  Profil mentése
+                </Text>
+              </LinearGradient>
+            </Pressable>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
+const styles = StyleSheet.create({
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+  },
+  saveChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 12,
+  },
+  bigAvatar: {
+    width: 80,
+    height: 80,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  colorSwatch: {
+    width: 44,
+    height: 44,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cardEyebrow: {
+    fontSize: 10,
+    fontFamily: font.display,
+    textTransform: 'uppercase',
+    letterSpacing: 2,
+    color: 'rgba(255,255,255,0.5)',
+    marginBottom: 8,
+  },
+  toggleHead: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  freqBtn: {
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+});
