@@ -1,3 +1,4 @@
+import { LinearGradient } from 'expo-linear-gradient';
 import { X } from 'lucide-react-native';
 import React from 'react';
 import {
@@ -6,6 +7,7 @@ import {
   Modal,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -14,6 +16,7 @@ import {
 } from 'react-native';
 
 import { Palette, font, getPalette, violet } from '@/constants/figma';
+import type { SupplementEntry } from '@/context/ProfileContext';
 import { useAppTheme } from '@/context/ThemeContext';
 
 export function usePalette(): Palette {
@@ -287,16 +290,23 @@ export function TagInput({
   tags,
   setTags,
   placeholder,
+  noneLabel,
+  noneActive,
+  onNoneChange,
 }: {
   tags: string[];
   setTags: (next: string[]) => void;
   placeholder: string;
+  noneLabel?: string;
+  noneActive?: boolean;
+  onNoneChange?: (active: boolean) => void;
 }) {
   const p = usePalette();
   const [draft, setDraft] = React.useState('');
   const add = () => {
     const v = draft.trim();
     if (!v || tags.includes(v)) return;
+    onNoneChange?.(false);
     setTags([...tags, v]);
     setDraft('');
   };
@@ -337,7 +347,7 @@ export function TagInput({
           </Text>
         </Pressable>
       </View>
-      {tags.length > 0 ? (
+      {tags.length > 0 && !noneActive ? (
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
           {tags.map((t) => (
             <View
@@ -374,9 +384,462 @@ export function TagInput({
           ))}
         </View>
       ) : null}
+      {noneLabel ? (
+        <Pressable
+          onPress={() => {
+            const next = !noneActive;
+            if (next) setTags([]);
+            onNoneChange?.(next);
+          }}
+          style={({ pressed }) => ({
+            alignSelf: 'flex-start',
+            paddingHorizontal: 12,
+            paddingVertical: 7,
+            borderRadius: 999,
+            borderWidth: 1.5,
+            backgroundColor: noneActive
+              ? p.dark
+                ? 'rgba(139,92,246,0.28)'
+                : '#EDE9FE'
+              : 'transparent',
+            borderColor: noneActive
+              ? violet[500]
+              : p.dark
+                ? 'rgba(255,255,255,0.18)'
+                : '#E9D5FF',
+            opacity: pressed ? 0.7 : 1,
+          })}>
+          <Text
+            style={{
+              fontSize: 12,
+              fontFamily: font.bodySemi,
+              color: noneActive
+                ? p.dark
+                  ? violet[300]
+                  : violet[700]
+                : p.muted,
+            }}>
+            {noneActive ? '✓  ' : ''}
+            {noneLabel}
+          </Text>
+        </Pressable>
+      ) : null}
     </View>
   );
 }
+
+function toIsoMonth(year: number, monthIndex: number): string {
+  return `${year}-${String(monthIndex + 1).padStart(2, '0')}-01`;
+}
+
+function formatHuMonth(iso: string): string {
+  if (!iso) return '';
+  const d = new Date(`${iso.slice(0, 7)}-01T12:00:00`);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString('hu-HU', { year: 'numeric', month: 'long' });
+}
+
+const MONTH_LABELS = [
+  'jan.',
+  'febr.',
+  'márc.',
+  'ápr.',
+  'máj.',
+  'jún.',
+  'júl.',
+  'aug.',
+  'szept.',
+  'okt.',
+  'nov.',
+  'dec.',
+];
+
+/**
+ * Tag lista kötelező „mikortól szedi” dátummal (gyógyszerek, vitaminok stb.).
+ */
+export function DatedTagInput({
+  tags,
+  setTags,
+  placeholder,
+  noneLabel,
+  noneActive,
+  onNoneChange,
+}: {
+  tags: SupplementEntry[];
+  setTags: (next: SupplementEntry[]) => void;
+  placeholder: string;
+  noneLabel?: string;
+  noneActive?: boolean;
+  onNoneChange?: (active: boolean) => void;
+}) {
+  const p = usePalette();
+  const [draft, setDraft] = React.useState('');
+  const [pendingName, setPendingName] = React.useState<string | null>(null);
+  const [year, setYear] = React.useState<number | null>(null);
+  const [month, setMonth] = React.useState<number | null>(null);
+
+  const now = React.useMemo(() => new Date(), []);
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth();
+  const years = React.useMemo(
+    () => Array.from({ length: 40 }, (_, i) => currentYear - i),
+    [currentYear],
+  );
+
+  const sinceIso =
+    year !== null && month !== null ? toIsoMonth(year, month) : null;
+
+  const startAdd = () => {
+    const v = draft.trim();
+    if (!v) return;
+    if (tags.some((t) => t.name.toLowerCase() === v.toLowerCase())) return;
+    onNoneChange?.(false);
+    setPendingName(v);
+    setYear(null);
+    setMonth(null);
+    setDraft('');
+  };
+
+  const cancelPending = () => {
+    setPendingName(null);
+    setYear(null);
+    setMonth(null);
+  };
+
+  const confirmPending = () => {
+    if (!pendingName || !sinceIso) return;
+    setTags([...tags, { name: pendingName, since: sinceIso }]);
+    cancelPending();
+  };
+
+  const selectYear = (y: number) => {
+    setYear(y);
+    if (month !== null && y === currentYear && month > currentMonth) {
+      setMonth(null);
+    }
+  };
+
+  const chip = (
+    label: string,
+    active: boolean,
+    onPress: () => void,
+    disabled?: boolean,
+  ) => (
+    <Pressable
+      key={label}
+      disabled={disabled}
+      onPress={onPress}
+      style={{ opacity: disabled ? 0.35 : 1 }}>
+      {active ? (
+        <LinearGradient
+          colors={[violet[600], violet[700]]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 0, y: 1 }}
+          style={datedStyles.chip}>
+          <Text
+            style={{
+              fontSize: 13,
+              fontFamily: font.display,
+              color: '#fff',
+            }}>
+            {label}
+          </Text>
+        </LinearGradient>
+      ) : (
+        <View
+          style={[
+            datedStyles.chip,
+            {
+              backgroundColor: p.fieldBgStrong,
+              borderWidth: 1,
+              borderColor: p.fieldBorder,
+            },
+          ]}>
+          <Text
+            style={{
+              fontSize: 13,
+              fontFamily: font.display,
+              color: p.text,
+            }}>
+            {label}
+          </Text>
+        </View>
+      )}
+    </Pressable>
+  );
+
+  return (
+    <View style={{ gap: 8 }}>
+      {!pendingName ? (
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <TextInput
+            value={draft}
+            onChangeText={setDraft}
+            onSubmitEditing={startAdd}
+            placeholder={placeholder}
+            placeholderTextColor={p.placeholder}
+            editable={!noneActive}
+            style={{
+              flex: 1,
+              borderRadius: 12,
+              paddingHorizontal: 12,
+              paddingVertical: 10,
+              fontSize: 14,
+              fontFamily: font.body,
+              color: p.text,
+              backgroundColor: p.fieldBgStrong,
+              borderWidth: 1,
+              borderColor: p.fieldBorder,
+              opacity: noneActive ? 0.5 : 1,
+            }}
+          />
+          <Pressable
+            onPress={startAdd}
+            disabled={noneActive}
+            style={({ pressed }) => ({
+              paddingHorizontal: 16,
+              justifyContent: 'center',
+              borderRadius: 12,
+              backgroundColor: violet[600],
+              opacity: noneActive ? 0.5 : pressed ? 0.85 : 1,
+              transform: [{ scale: pressed && !noneActive ? 0.95 : 1 }],
+            })}>
+            <Text
+              style={{ color: '#fff', fontFamily: font.display, fontSize: 14 }}>
+              Hozzáad
+            </Text>
+          </Pressable>
+        </View>
+      ) : (
+        <View
+          style={{
+            gap: 10,
+            padding: 12,
+            borderRadius: 16,
+            borderWidth: 1,
+            borderColor: violet[500],
+            backgroundColor: p.dark
+              ? 'rgba(139,92,246,0.12)'
+              : 'rgba(139,92,246,0.08)',
+          }}>
+          <Text
+            style={{
+              fontFamily: font.display,
+              fontSize: 14,
+              color: p.text,
+            }}>
+            {pendingName}
+          </Text>
+          <Text
+            style={{
+              fontSize: 12,
+              fontFamily: font.bodySemi,
+              color: p.muted,
+            }}>
+            Mióta szedi a készítményt? *
+          </Text>
+
+          <Text
+            style={{
+              fontSize: 11,
+              fontFamily: font.bodySemi,
+              color: p.muted,
+            }}>
+            Év
+          </Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ gap: 8, paddingVertical: 2 }}>
+            {years.map((y) => chip(String(y), year === y, () => selectYear(y)))}
+          </ScrollView>
+
+          <Text
+            style={{
+              fontSize: 11,
+              fontFamily: font.bodySemi,
+              color: p.muted,
+            }}>
+            Hónap
+          </Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ gap: 8, paddingVertical: 2 }}>
+            {MONTH_LABELS.map((label, idx) =>
+              chip(
+                label,
+                month === idx,
+                () => setMonth(idx),
+                year === currentYear && idx > currentMonth,
+              ),
+            )}
+          </ScrollView>
+
+          {sinceIso ? (
+            <Text
+              style={{
+                fontSize: 12,
+                fontFamily: font.body,
+                color: violet[400],
+              }}>
+              Kiválasztva: {formatHuMonth(sinceIso)}
+            </Text>
+          ) : null}
+
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <Pressable
+              onPress={cancelPending}
+              style={{
+                flex: 1,
+                paddingVertical: 10,
+                borderRadius: 12,
+                alignItems: 'center',
+                borderWidth: 1,
+                borderColor: p.fieldBorder,
+              }}>
+              <Text
+                style={{
+                  fontFamily: font.bodySemi,
+                  fontSize: 13,
+                  color: p.muted,
+                }}>
+                Mégse
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={confirmPending}
+              disabled={!sinceIso}
+              style={{
+                flex: 1,
+                paddingVertical: 10,
+                borderRadius: 12,
+                alignItems: 'center',
+                backgroundColor: sinceIso ? violet[600] : p.fieldBgStrong,
+                opacity: sinceIso ? 1 : 0.5,
+              }}>
+              <Text
+                style={{
+                  fontFamily: font.display,
+                  fontSize: 13,
+                  color: sinceIso ? '#fff' : p.faint,
+                }}>
+                Mentés
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      )}
+
+      {tags.length > 0 && !noneActive ? (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          {tags.map((t) => (
+            <View
+              key={`${t.name}-${t.since}`}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 6,
+                paddingHorizontal: 12,
+                paddingVertical: 6,
+                borderRadius: 999,
+                borderWidth: 1,
+                backgroundColor: p.dark
+                  ? 'rgba(139,92,246,0.15)'
+                  : '#F5F3FF',
+                borderColor: p.dark ? 'rgba(139,92,246,0.3)' : '#DDD6FE',
+              }}>
+              <View>
+                <Text
+                  style={{
+                    fontSize: 12,
+                    fontFamily: font.bodySemi,
+                    color: p.dark ? violet[300] : violet[700],
+                  }}>
+                  {t.name}
+                </Text>
+                {t.since ? (
+                  <Text
+                    style={{
+                      fontSize: 10,
+                      fontFamily: font.body,
+                      color: p.muted,
+                    }}>
+                    {formatHuMonth(t.since)} óta
+                  </Text>
+                ) : null}
+              </View>
+              <Pressable
+                onPress={() =>
+                  setTags(tags.filter((x) => x.name !== t.name || x.since !== t.since))
+                }>
+                <X
+                  size={11}
+                  color={p.dark ? violet[300] : violet[700]}
+                  style={{ opacity: 0.6 }}
+                />
+              </Pressable>
+            </View>
+          ))}
+        </View>
+      ) : null}
+
+      {noneLabel ? (
+        <Pressable
+          onPress={() => {
+            const next = !noneActive;
+            if (next) {
+              setTags([]);
+              cancelPending();
+            }
+            onNoneChange?.(next);
+          }}
+          style={({ pressed }) => ({
+            alignSelf: 'flex-start',
+            paddingHorizontal: 12,
+            paddingVertical: 7,
+            borderRadius: 999,
+            borderWidth: 1.5,
+            backgroundColor: noneActive
+              ? p.dark
+                ? 'rgba(139,92,246,0.28)'
+                : '#EDE9FE'
+              : 'transparent',
+            borderColor: noneActive
+              ? violet[500]
+              : p.dark
+                ? 'rgba(255,255,255,0.18)'
+                : '#E9D5FF',
+            opacity: pressed ? 0.7 : 1,
+          })}>
+          <Text
+            style={{
+              fontSize: 12,
+              fontFamily: font.bodySemi,
+              color: noneActive
+                ? p.dark
+                  ? violet[300]
+                  : violet[700]
+                : p.muted,
+            }}>
+            {noneActive ? '✓  ' : ''}
+            {noneLabel}
+          </Text>
+        </Pressable>
+      ) : null}
+    </View>
+  );
+}
+
+const datedStyles = StyleSheet.create({
+  chip: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+});
 
 /** Barátságos üres állapot listákhoz: emoji + cím + magyarázat. */
 export function EmptyState({

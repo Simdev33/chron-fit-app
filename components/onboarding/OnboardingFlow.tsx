@@ -15,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { usePalette } from '@/components/figma/ui';
 import { font, violet } from '@/constants/figma';
+import { useHealthLog } from '@/context/HealthLogContext';
 import {
   diagnosisLabels,
   goalOptions,
@@ -25,7 +26,7 @@ import {
   useProfile,
 } from '@/context/ProfileContext';
 
-const STEP_COUNT = 5;
+const STEP_COUNT = 6;
 const MAX_TRIGGERS = 5;
 
 const diagnosisOptions: { value: Diagnosis; description: string }[] = [
@@ -58,10 +59,12 @@ const phaseOptions: { value: Phase; emoji: string; description: string }[] = [
 export function OnboardingFlow() {
   const p = usePalette();
   const { profile, completeOnboarding } = useProfile();
+  const { resetMedications } = useHealthLog();
   const [step, setStep] = useState(0);
   const [name, setName] = useState('');
   const [diagnosis, setDiagnosis] = useState<Diagnosis>('crohn');
   const [phase, setPhase] = useState<Phase>('remission');
+  const [takesMeds, setTakesMeds] = useState(true);
   const [triggers, setTriggers] = useState<string[]>([]);
   const [goals, setGoals] = useState<string[]>([]);
 
@@ -85,12 +88,16 @@ export function OnboardingFlow() {
     if (step < STEP_COUNT - 1) {
       setStep(step + 1);
     } else {
+      // Új fióknál üres gyógyszerlistával indulunk; ha nem szed gyógyszert,
+      // ezt jelezzük is, hogy az app ne kérje a felvételüket.
+      resetMedications(!takesMeds);
       completeOnboarding({
         name: name.trim(),
         diagnosis,
         phase,
         triggerFoods: triggers,
         goals,
+        noPrescribedMeds: !takesMeds,
       });
     }
   }
@@ -253,6 +260,62 @@ export function OnboardingFlow() {
           {step === 3 ? (
             <View style={{ gap: 8 }}>
               <Text style={[styles.question, { color: p.text }]}>
+                Szedsz rendszeresen gyógyszert?
+              </Text>
+              <Text style={[styles.hint, { color: p.muted }]}>
+                Ha igen, az app szervezőjében tudod majd vezetni őket —
+                emlékeztetőkkel.
+              </Text>
+              <View style={{ gap: 12, marginTop: 8 }}>
+                {(
+                  [
+                    {
+                      value: true,
+                      emoji: '💊',
+                      title: 'Igen, szedek',
+                      desc: 'A gyógyszereidet a Szervező fülön veheted fel, miután végeztünk.',
+                    },
+                    {
+                      value: false,
+                      emoji: '🙌',
+                      title: 'Nem szedek gyógyszert',
+                      desc: 'Semmi gond — ha ez változik, bármikor felvehetsz újat a Szervezőben.',
+                    },
+                  ] as const
+                ).map((opt) => {
+                  const active = takesMeds === opt.value;
+                  return (
+                    <Pressable
+                      key={String(opt.value)}
+                      onPress={() => setTakesMeds(opt.value)}
+                      style={({ pressed }) => [
+                        styles.optionCard,
+                        {
+                          backgroundColor: active ? activeBg : cardBg,
+                          borderColor: active ? violet[500] : cardBorder,
+                        },
+                        pressed && { transform: [{ scale: 0.98 }] },
+                      ]}>
+                      <Text style={{ fontSize: 24 }}>{opt.emoji}</Text>
+                      <View style={{ flex: 1, gap: 2 }}>
+                        <Text style={[styles.optionTitle, { color: p.text }]}>
+                          {opt.title}
+                        </Text>
+                        <Text style={[styles.optionDesc, { color: p.muted }]}>
+                          {opt.desc}
+                        </Text>
+                      </View>
+                      {active ? <Check size={20} color={violet[400]} /> : null}
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
+          ) : null}
+
+          {step === 4 ? (
+            <View style={{ gap: 8 }}>
+              <Text style={[styles.question, { color: p.text }]}>
                 Mik a fő triggereid?
               </Text>
               <Text style={[styles.hint, { color: p.muted }]}>
@@ -290,7 +353,7 @@ export function OnboardingFlow() {
             </View>
           ) : null}
 
-          {step === 4 ? (
+          {step === 5 ? (
             <View style={{ gap: 8 }}>
               <Text style={[styles.question, { color: p.text }]}>
                 Mi a célod?

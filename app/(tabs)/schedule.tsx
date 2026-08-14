@@ -24,13 +24,16 @@ import { AddMedicationSheet } from '@/components/figma/AddMedicationSheet';
 import { EmptyState, GlassCard, usePalette } from '@/components/figma/ui';
 import { font, fuchsia400, violet } from '@/constants/figma';
 import { WEEK } from '@/constants/figmaData';
-import { useHealthLog } from '@/context/HealthLogContext';
+import { toIsoDate, useHealthLog } from '@/context/HealthLogContext';
+import { useProfile } from '@/context/ProfileContext';
 
 export default function ScheduleScreen() {
   const p = usePalette();
   const insets = useSafeAreaInsets();
-  const { log, removeAppointment, removeMedication } = useHealthLog();
-  const [taken, setTaken] = useState<Set<string>>(new Set());
+  const { log, removeAppointment, removeMedication, setNoMeds, toggleMedicationTaken } =
+    useHealthLog();
+  const { updateProfile } = useProfile();
+  const taken = new Set(log.takenDoses?.[toIsoDate(new Date())] ?? []);
   const [selectedDate, setSelectedDate] = useState(13);
   const [addOpen, setAddOpen] = useState(false);
   const [addMedOpen, setAddMedOpen] = useState(false);
@@ -46,13 +49,7 @@ export default function ScheduleScreen() {
     [log.appointments],
   );
 
-  const toggle = (id: string) =>
-    setTaken((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+  const toggle = (id: string) => toggleMedicationTaken(id);
 
   return (
     <View style={{ flex: 1, backgroundColor: p.bg }}>
@@ -164,14 +161,16 @@ export default function ScheduleScreen() {
               Napi gyógyszerek
             </Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-              <Text
-                style={{
-                  fontSize: 12,
-                  fontFamily: font.bodySemi,
-                  color: violet[400],
-                }}>
-                {taken.size}/{meds.length} kész
-              </Text>
+              {meds.length > 0 && (
+                <Text
+                  style={{
+                    fontSize: 12,
+                    fontFamily: font.bodySemi,
+                    color: violet[400],
+                  }}>
+                  {taken.size}/{meds.length} kész
+                </Text>
+              )}
               <Pressable
                 onPress={() => setAddMedOpen(true)}
                 style={({ pressed }) => [
@@ -196,12 +195,40 @@ export default function ScheduleScreen() {
               </Pressable>
             </View>
           </View>
-          {meds.length === 0 && (
+          {meds.length === 0 && log.noMeds && (
             <EmptyState
-              emoji="💊"
-              title="Még nincs felvett gyógyszer"
-              text="Koppints az „Új” gombra, és add hozzá a gyógyszereidet vagy vitaminjaidat — mi számon tartjuk, mikor mi következik."
+              emoji="🙌"
+              title="Nem szedsz gyógyszert"
+              text="Ezt jelezted nekünk — így nem is fogjuk kérni a felvételüket. Ha ez változik, koppints az „Új” gombra, és a lista újra aktív lesz."
             />
+          )}
+          {meds.length === 0 && !log.noMeds && (
+            <>
+              <EmptyState
+                emoji="💊"
+                title="Még nincs felvett gyógyszer"
+                text="Koppints az „Új” gombra, és add hozzá a gyógyszereidet vagy vitaminjaidat — mi számon tartjuk, mikor mi következik."
+              />
+              <Pressable
+                onPress={() => {
+                  setNoMeds(true);
+                  updateProfile({ noPrescribedMeds: true, prescribedMeds: [] });
+                }}
+                style={({ pressed }) => [
+                  { alignSelf: 'center', marginTop: 12, padding: 6 },
+                  pressed && { opacity: 0.6 },
+                ]}>
+                <Text
+                  style={{
+                    fontSize: 13,
+                    fontFamily: font.bodySemi,
+                    color: violet[400],
+                    textDecorationLine: 'underline',
+                  }}>
+                  Nem szedek gyógyszert
+                </Text>
+              </Pressable>
+            </>
           )}
           <View style={{ gap: 12 }}>
             {meds.map((m) => {

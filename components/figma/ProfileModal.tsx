@@ -1,7 +1,7 @@
 import Slider from '@react-native-community/slider';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Camera, ChevronLeft } from 'lucide-react-native';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Modal,
@@ -16,6 +16,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
+  DatedTagInput,
   GlassCard,
   SectionHeader,
   TagInput,
@@ -24,7 +25,13 @@ import {
   usePalette,
 } from '@/components/figma/ui';
 import { AVATAR_COLORS, blue, font, violet } from '@/constants/figma';
-import { useProfile } from '@/context/ProfileContext';
+import { useHealthLog } from '@/context/HealthLogContext';
+import {
+  type Diagnosis,
+  type SupplementEntry,
+  diagnosisLabels,
+  useProfile,
+} from '@/context/ProfileContext';
 
 const SEGMENTS = [
   'Terminális ileum',
@@ -64,34 +71,36 @@ export function ProfileModal({
   const insets = useSafeAreaInsets();
   const keyboardHeight = useKeyboardHeight();
   const { profile, updateProfile } = useProfile();
+  const { syncMedicationsFromProfile } = useHealthLog();
   const remission = profile.phase === 'remission';
 
   const [name, setName] = useState(profile.name);
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(profile.email);
   const [age, setAge] = useState(profile.age);
   const [weight, setWeight] = useState(profile.weightKg);
   const [height, setHeight] = useState(profile.heightCm);
   const [colorIdx, setColorIdx] = useState(profile.avatarColorIdx);
-  const [condition, setCondition] = useState(CONDITIONS[0]);
+  const [condition, setCondition] = useState(
+    diagnosisLabels[profile.diagnosis] ?? CONDITIONS[0],
+  );
   const [segments, setSegments] = useState<string[]>([
     'Terminális ileum',
     'Vakbél',
   ]);
-  const [meds, setMeds] = useState<string[]>([
-    'Mesalamine 800mg',
-    'Azathioprine 100mg',
-  ]);
-  const [bio, setBio] = useState<string[]>([]);
-  const [vitamins, setVitamins] = useState<string[]>([
-    'D3-vitamin 2000NE',
-    'Vas 65mg',
-  ]);
-  const [supplements, setSupplements] = useState<string[]>(['Whey izolátum']);
-  const [triggers, setTriggers] = useState<string[]>(
-    profile.triggerFoods.length
-      ? profile.triggerFoods
-      : ['Magvak', 'Tejtermékek', 'Csípős ételek'],
+  const [meds, setMeds] = useState<SupplementEntry[]>(profile.prescribedMeds);
+  const [bio, setBio] = useState<SupplementEntry[]>(profile.biologics);
+  const [vitamins, setVitamins] = useState<SupplementEntry[]>(profile.vitamins);
+  const [supplements, setSupplements] = useState<SupplementEntry[]>(
+    profile.fitnessSupplements,
   );
+  const [triggers, setTriggers] = useState<string[]>(profile.triggerFoods);
+  const [noMedsFlag, setNoMedsFlag] = useState(profile.noPrescribedMeds);
+  const [noBio, setNoBio] = useState(profile.noBiologics);
+  const [noVitamins, setNoVitamins] = useState(profile.noVitamins);
+  const [noSupplements, setNoSupplements] = useState(
+    profile.noFitnessSupplements,
+  );
+  const [noTriggers, setNoTriggers] = useState(profile.noTriggerFoods);
   const [stoma, setStoma] = useState(false);
   const [stomaType, setStomaType] = useState('');
   const [surgery, setSurgery] = useState(false);
@@ -100,24 +109,93 @@ export function ProfileModal({
   const [skin, setSkin] = useState(false);
   const [fiber, setFiber] = useState(2);
   const [dietApproach, setDietApproach] = useState('low-residue');
-  const [frequency, setFrequency] = useState(3);
-  const [focus, setFocus] = useState<string[]>(['cardio']);
+  const [frequency, setFrequency] = useState(profile.workoutFrequency || 3);
+  const [focus, setFocus] = useState<string[]>(profile.workoutFocus);
+  const [noExercise, setNoExercise] = useState(profile.noExercise);
 
-  const toggleIn = (list: string[], set: (v: string[]) => void, v: string) =>
-    set(list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
+  // A mezőket csak megnyitáskor töltjük a profilból, gépelés közben nem.
+  useEffect(() => {
+    if (!visible) return;
+    setName(profile.name);
+    setEmail(profile.email);
+    setAge(profile.age);
+    setWeight(profile.weightKg);
+    setHeight(profile.heightCm);
+    setColorIdx(profile.avatarColorIdx);
+    setCondition(diagnosisLabels[profile.diagnosis] ?? CONDITIONS[0]);
+    setMeds(profile.prescribedMeds);
+    setBio(profile.biologics);
+    setVitamins(profile.vitamins);
+    setSupplements(profile.fitnessSupplements);
+    setTriggers(profile.triggerFoods);
+    setNoMedsFlag(profile.noPrescribedMeds);
+    setNoBio(profile.noBiologics);
+    setNoVitamins(profile.noVitamins);
+    setNoSupplements(profile.noFitnessSupplements);
+    setNoTriggers(profile.noTriggerFoods);
+    setFrequency(profile.workoutFrequency || 3);
+    setFocus(profile.workoutFocus);
+    setNoExercise(profile.noExercise);
+  }, [visible]);
 
-  const save = () => {
+  const flushAndClose = () => {
     updateProfile({
-      name: name || profile.name,
+      name: name.trim() || profile.name,
+      email: email.trim(),
       age,
       weightKg: weight,
       heightCm: height,
-      triggerFoods: triggers,
     });
     onClose();
   };
 
+  const commitPrescribed = (next: SupplementEntry[], none: boolean) => {
+    const list = none ? [] : next;
+    setMeds(list);
+    setNoMedsFlag(none);
+    updateProfile({ prescribedMeds: list, noPrescribedMeds: none });
+    syncMedicationsFromProfile(list, none);
+  };
+
+  const commitBio = (next: SupplementEntry[], none: boolean) => {
+    const list = none ? [] : next;
+    setBio(list);
+    setNoBio(none);
+    updateProfile({ biologics: list, noBiologics: none });
+  };
+
+  const commitVitamins = (next: SupplementEntry[], none: boolean) => {
+    const list = none ? [] : next;
+    setVitamins(list);
+    setNoVitamins(none);
+    updateProfile({ vitamins: list, noVitamins: none });
+  };
+
+  const commitSupplements = (next: SupplementEntry[], none: boolean) => {
+    const list = none ? [] : next;
+    setSupplements(list);
+    setNoSupplements(none);
+    updateProfile({ fitnessSupplements: list, noFitnessSupplements: none });
+  };
+
+  const commitTriggers = (next: string[], none: boolean) => {
+    const list = none ? [] : next;
+    setTriggers(list);
+    setNoTriggers(none);
+    updateProfile({ triggerFoods: list, noTriggerFoods: none });
+  };
+
   const setPhase = (phase: 'remission' | 'flare') => updateProfile({ phase });
+
+  const diagnosisFromLabel = (label: string): Diagnosis => {
+    const found = (Object.keys(diagnosisLabels) as Diagnosis[]).find(
+      (key) => diagnosisLabels[key] === label,
+    );
+    return found ?? 'crohn';
+  };
+
+  const toggleIn = (list: string[], set: (v: string[]) => void, v: string) =>
+    set(list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
 
   const inputStyle = {
     borderRadius: 16,
@@ -144,7 +222,7 @@ export function ProfileModal({
       animationType="slide"
       statusBarTranslucent
       navigationBarTranslucent
-      onRequestClose={onClose}
+      onRequestClose={flushAndClose}
       presentationStyle="fullScreen">
       <KeyboardAvoidingView
         style={{
@@ -159,7 +237,7 @@ export function ProfileModal({
             { paddingTop: insets.top + 8, borderBottomColor: p.divider },
           ]}>
           <Pressable
-            onPress={onClose}
+            onPress={flushAndClose}
             style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
             <ChevronLeft size={20} color={p.muted} />
             <Text
@@ -171,7 +249,7 @@ export function ProfileModal({
             style={{ fontFamily: font.displayX, fontSize: 16, color: p.text }}>
             Profilom
           </Text>
-          <Pressable onPress={save}>
+          <Pressable onPress={flushAndClose}>
             <LinearGradient
               colors={[violet[600], violet[700]]}
               start={{ x: 0, y: 0 }}
@@ -179,7 +257,7 @@ export function ProfileModal({
               style={styles.saveChip}>
               <Text
                 style={{ fontFamily: font.display, fontSize: 12, color: '#fff' }}>
-                Mentés
+                Kész
               </Text>
             </LinearGradient>
           </Pressable>
@@ -380,6 +458,9 @@ export function ProfileModal({
                 <TextInput
                   value={name}
                   onChangeText={setName}
+                  onBlur={() =>
+                    updateProfile({ name: name.trim() || profile.name })
+                  }
                   placeholder="Neved"
                   placeholderTextColor={p.placeholder}
                   style={inputStyle}
@@ -390,6 +471,7 @@ export function ProfileModal({
                 <TextInput
                   value={age}
                   onChangeText={setAge}
+                  onBlur={() => updateProfile({ age })}
                   placeholder="Év"
                   keyboardType="numeric"
                   placeholderTextColor={p.placeholder}
@@ -402,6 +484,7 @@ export function ProfileModal({
               <TextInput
                 value={email}
                 onChangeText={setEmail}
+                onBlur={() => updateProfile({ email: email.trim() })}
                 placeholder="E-mail cím"
                 keyboardType="email-address"
                 placeholderTextColor={p.placeholder}
@@ -414,6 +497,7 @@ export function ProfileModal({
                 <TextInput
                   value={weight}
                   onChangeText={setWeight}
+                  onBlur={() => updateProfile({ weightKg: weight })}
                   placeholder="kg"
                   keyboardType="numeric"
                   placeholderTextColor={p.placeholder}
@@ -425,6 +509,7 @@ export function ProfileModal({
                 <TextInput
                   value={height}
                   onChangeText={setHeight}
+                  onBlur={() => updateProfile({ heightCm: height })}
                   placeholder="cm"
                   keyboardType="numeric"
                   placeholderTextColor={p.placeholder}
@@ -448,7 +533,10 @@ export function ProfileModal({
                   return (
                     <Pressable
                       key={c}
-                      onPress={() => setCondition(c)}
+                      onPress={() => {
+                        setCondition(c);
+                        updateProfile({ diagnosis: diagnosisFromLabel(c) });
+                      }}
                       style={{
                         flexDirection: 'row',
                         alignItems: 'center',
@@ -558,40 +646,75 @@ export function ProfileModal({
           <View style={{ paddingHorizontal: 20, gap: 20 }}>
             {(
               [
-                ['Felírt gyógyszerek', meds, setMeds, 'pl. Mesalamine 800mg'],
+                [
+                  'Felírt gyógyszerek',
+                  meds,
+                  (next: SupplementEntry[]) => commitPrescribed(next, false),
+                  'pl. Mesalamine 800mg',
+                  'Nem szedek felírt gyógyszert',
+                  noMedsFlag,
+                  (none: boolean) => commitPrescribed(none ? [] : meds, none),
+                ],
                 [
                   'Biológiai terápiák',
                   bio,
-                  setBio,
+                  (next: SupplementEntry[]) => commitBio(next, false),
                   'pl. Vedolizumab, Adalimumab',
+                  'Nem kapok biológiai terápiát',
+                  noBio,
+                  (none: boolean) => commitBio(none ? [] : bio, none),
                 ],
                 [
                   'Napi vitaminok',
                   vitamins,
-                  setVitamins,
+                  (next: SupplementEntry[]) => commitVitamins(next, false),
                   'pl. D3-vitamin, vas, kalcium',
+                  'Nem szedek vitamint',
+                  noVitamins,
+                  (none: boolean) => commitVitamins(none ? [] : vitamins, none),
                 ],
                 [
                   'Fitnesz kiegészítők',
                   supplements,
-                  setSupplements,
+                  (next: SupplementEntry[]) => commitSupplements(next, false),
                   'pl. Whey izolátum, kreatin',
+                  'Nem szedek kiegészítőt',
+                  noSupplements,
+                  (none: boolean) =>
+                    commitSupplements(none ? [] : supplements, none),
                 ],
-              ] as [string, string[], (v: string[]) => void, string][]
-            ).map(([label, tags, setTags, placeholder]) => (
-              <View key={label}>
-                <Text
-                  style={{
-                    fontFamily: font.display,
-                    fontSize: 14,
-                    marginBottom: 8,
-                    color: p.text,
-                  }}>
-                  {label}
-                </Text>
-                <TagInput tags={tags} setTags={setTags} placeholder={placeholder} />
-              </View>
-            ))}
+              ] as [
+                string,
+                SupplementEntry[],
+                (v: SupplementEntry[]) => void,
+                string,
+                string,
+                boolean,
+                (v: boolean) => void,
+              ][]
+            ).map(
+              ([label, tags, setTags, placeholder, noneLabel, none, setNone]) => (
+                <View key={label}>
+                  <Text
+                    style={{
+                      fontFamily: font.display,
+                      fontSize: 14,
+                      marginBottom: 8,
+                      color: p.text,
+                    }}>
+                    {label}
+                  </Text>
+                  <DatedTagInput
+                    tags={tags}
+                    setTags={setTags}
+                    placeholder={placeholder}
+                    noneLabel={noneLabel}
+                    noneActive={none}
+                    onNoneChange={setNone}
+                  />
+                </View>
+              ),
+            )}
           </View>
 
           {/* Trigger ételek */}
@@ -602,8 +725,13 @@ export function ProfileModal({
           <View style={{ paddingHorizontal: 20 }}>
             <TagInput
               tags={triggers}
-              setTags={setTriggers}
+              setTags={(next) => commitTriggers(next, false)}
               placeholder="pl. tejtermék, magvak, alkohol"
+              noneLabel="Nincs ismert triggerem"
+              noneActive={noTriggers}
+              onNoneChange={(none) =>
+                commitTriggers(none ? [] : triggers, none)
+              }
             />
           </View>
 
@@ -811,21 +939,32 @@ export function ProfileModal({
                   {FIBER_LABELS[fiber - 1]}
                 </Text>
               </View>
-              <Slider
-                minimumValue={1}
-                maximumValue={5}
-                step={1}
-                value={fiber}
-                onValueChange={setFiber}
-                minimumTrackTintColor={violet[500]}
-                maximumTrackTintColor={p.toggleOff}
-                thumbTintColor={violet[500]}
-              />
-              <View style={styles.toggleHead}>
+              <View style={{ marginHorizontal: '10%' }}>
+                <Slider
+                  style={{ marginHorizontal: -10 }}
+                  minimumValue={1}
+                  maximumValue={5}
+                  step={1}
+                  value={fiber}
+                  onValueChange={setFiber}
+                  thumbSize={20}
+                  minimumTrackTintColor={violet[500]}
+                  maximumTrackTintColor={p.toggleOff}
+                  thumbTintColor={violet[500]}
+                />
+              </View>
+              <View style={{ flexDirection: 'row' }}>
                 {FIBER_LABELS.map((l) => (
                   <Text
                     key={l}
-                    style={{ fontSize: 8, fontFamily: font.body, color: p.muted }}>
+                    style={{
+                      flex: 1,
+                      fontSize: 8,
+                      lineHeight: 11,
+                      fontFamily: font.body,
+                      color: p.muted,
+                      textAlign: 'center',
+                    }}>
                     {l}
                   </Text>
                 ))}
@@ -901,8 +1040,9 @@ export function ProfileModal({
                     fontFamily: font.displayX,
                     fontSize: 24,
                     color: violet[400],
+                    opacity: noExercise ? 0.45 : 1,
                   }}>
-                  {frequency}
+                  {noExercise ? 0 : frequency}
                   <Text
                     style={{
                       fontSize: 12,
@@ -914,13 +1054,27 @@ export function ProfileModal({
                   </Text>
                 </Text>
               </View>
-              <View style={{ flexDirection: 'row', gap: 6, marginTop: 12 }}>
+              <View
+                style={{
+                  flexDirection: 'row',
+                  gap: 6,
+                  marginTop: 12,
+                  opacity: noExercise ? 0.45 : 1,
+                }}>
                 {[1, 2, 3, 4, 5, 6, 7].map((n) => {
-                  const active = frequency === n;
+                  const active = !noExercise && frequency === n;
                   return (
                     <Pressable
                       key={n}
-                      onPress={() => setFrequency(n)}
+                      disabled={noExercise}
+                      onPress={() => {
+                        setNoExercise(false);
+                        setFrequency(n);
+                        updateProfile({
+                          noExercise: false,
+                          workoutFrequency: n,
+                        });
+                      }}
                       style={{ flex: 1 }}>
                       {active ? (
                         <LinearGradient
@@ -961,9 +1115,47 @@ export function ProfileModal({
                   );
                 })}
               </View>
+              <Pressable
+                onPress={() => {
+                  const next = !noExercise;
+                  setNoExercise(next);
+                  if (next) setFocus([]);
+                  updateProfile({
+                    noExercise: next,
+                    workoutFrequency: next ? 0 : frequency,
+                    workoutFocus: next ? [] : focus,
+                  });
+                }}
+                style={({ pressed }) => ({
+                  marginTop: 12,
+                  paddingVertical: 10,
+                  borderRadius: 12,
+                  alignItems: 'center',
+                  borderWidth: 1.5,
+                  backgroundColor: noExercise
+                    ? p.dark
+                      ? 'rgba(139,92,246,0.28)'
+                      : '#EDE9FE'
+                    : p.fieldBgStrong,
+                  borderColor: noExercise ? violet[500] : p.fieldBorder,
+                  opacity: pressed ? 0.7 : 1,
+                })}>
+                <Text
+                  style={{
+                    fontSize: 13,
+                    fontFamily: font.display,
+                    color: noExercise
+                      ? p.dark
+                        ? violet[300]
+                        : violet[700]
+                      : p.muted,
+                  }}>
+                  {noExercise ? '✓  Nem edzek' : 'Nem edzek'}
+                </Text>
+              </Pressable>
             </GlassCard>
 
-            <View>
+            <View style={{ opacity: noExercise ? 0.45 : 1 }}>
               <Text style={smallLabel}>
                 Elsődleges fókusz{' '}
                 <Text style={{ fontFamily: font.body }}>
@@ -972,11 +1164,21 @@ export function ProfileModal({
               </Text>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                 {FOCUS.map((f) => {
-                  const active = focus.includes(f.id);
+                  const active = !noExercise && focus.includes(f.id);
                   return (
                     <Pressable
                       key={f.id}
-                      onPress={() => toggleIn(focus, setFocus, f.id)}
+                      disabled={noExercise}
+                      onPress={() => {
+                        const next = focus.includes(f.id)
+                          ? focus.filter((id) => id !== f.id)
+                          : [...focus, f.id];
+                        setFocus(next);
+                        updateProfile({
+                          workoutFocus: next,
+                          noExercise: false,
+                        });
+                      }}
                       style={{
                         width: '31%',
                         flexGrow: 1,
@@ -1010,7 +1212,7 @@ export function ProfileModal({
               </View>
             </View>
 
-            <Pressable onPress={save}>
+            <Pressable onPress={flushAndClose}>
               <LinearGradient
                 colors={[violet[600], violet[700]]}
                 start={{ x: 0, y: 0 }}
@@ -1026,7 +1228,7 @@ export function ProfileModal({
                     fontSize: 16,
                     color: '#fff',
                   }}>
-                  Profil mentése
+                  Kész
                 </Text>
               </LinearGradient>
             </Pressable>

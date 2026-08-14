@@ -356,10 +356,12 @@ export default function MedicalScreen() {
         </View>
       </ScrollView>
 
-      <ProfileModal
-        visible={profileOpen}
-        onClose={() => setProfileOpen(false)}
-      />
+      {profileOpen ? (
+        <ProfileModal
+          visible
+          onClose={() => setProfileOpen(false)}
+        />
+      ) : null}
     </View>
   );
 }

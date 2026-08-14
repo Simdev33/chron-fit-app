@@ -12,6 +12,7 @@ import {
 import { BottomSheet, usePalette } from '@/components/figma/ui';
 import { font, violet } from '@/constants/figma';
 import { useHealthLog } from '@/context/HealthLogContext';
+import { useProfile } from '@/context/ProfileContext';
 
 const HOURS = [6, 7, 8, 9, 10, 12, 14, 16, 18, 20, 21, 22];
 const MINUTES = ['00', '15', '30', '45'];
@@ -42,6 +43,7 @@ export function AddMedicationSheet({
 }) {
   const p = usePalette();
   const { addMedication } = useHealthLog();
+  const { updateProfile } = useProfile();
 
   const [name, setName] = useState('');
   const [dose, setDose] = useState('');
@@ -67,6 +69,7 @@ export function AddMedicationSheet({
       time: `${hour}:${minute}`,
       times: timesLabel,
     });
+    updateProfile({ noPrescribedMeds: false });
     setName('');
     setDose('');
     setHour(8);

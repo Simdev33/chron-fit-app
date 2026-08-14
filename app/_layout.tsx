@@ -17,7 +17,7 @@ import 'react-native-reanimated';
 import { AuthFlow } from '@/components/auth/AuthFlow';
 import { WelcomeSplash } from '@/components/auth/WelcomeSplash';
 import { OnboardingFlow } from '@/components/onboarding/OnboardingFlow';
-import { HealthLogProvider } from '@/context/HealthLogContext';
+import { HealthLogProvider, useHealthLog } from '@/context/HealthLogContext';
 import { ProfileProvider, useProfile } from '@/context/ProfileContext';
 import { AppThemeProvider, useAppTheme } from '@/context/ThemeContext';
 import { TutorialProvider } from '@/context/TutorialContext';
@@ -58,12 +58,35 @@ export default function RootLayout() {
       <ProfileProvider>
         <HealthLogProvider>
           <TutorialProvider>
+            <ProfileMedsSync />
             <RootLayoutNav />
           </TutorialProvider>
         </HealthLogProvider>
       </ProfileProvider>
     </AppThemeProvider>
   );
+}
+
+/** A profil felírt gyógyszerei azonnal megjelenjenek a bevételi listában. */
+function ProfileMedsSync() {
+  const { ready: profileReady, profile } = useProfile();
+  const { ready: logReady, syncMedicationsFromProfile } = useHealthLog();
+
+  useEffect(() => {
+    if (!profileReady || !logReady) return;
+    syncMedicationsFromProfile(
+      profile.prescribedMeds,
+      profile.noPrescribedMeds,
+    );
+  }, [
+    profileReady,
+    logReady,
+    profile.prescribedMeds,
+    profile.noPrescribedMeds,
+    syncMedicationsFromProfile,
+  ]);
+
+  return null;
 }
 
 function RootLayoutNav() {

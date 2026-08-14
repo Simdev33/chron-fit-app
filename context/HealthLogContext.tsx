@@ -43,6 +43,8 @@ export type MedicationEntry = {
   dose: string;
   time: string; // "HH:MM"
   times: string; // pl. "1× naponta"
+  /** A profil „felírt gyógyszerek” listájából származik. */
+  fromProfile?: boolean;
 };
 
 type HealthLog = {
@@ -56,6 +58,10 @@ type HealthLog = {
   appointments: AppointmentEntry[];
   /** Gyógyszerek és kiegészítők */
   medications: MedicationEntry[];
+  /** A felhasználó jelezte, hogy nem szed gyógyszert. */
+  noMeds: boolean;
+  /** ISO dátum → aznap bevett gyógyszer-azonosítók */
+  takenDoses: Record<string, string[]>;
 };
 
 const STORAGE_KEY = 'crohnsync-healthlog-v1';
@@ -114,6 +120,8 @@ const emptyLog: HealthLog = {
   meals: {},
   appointments: seedAppointments,
   medications: seedMedications,
+  noMeds: false,
+  takenDoses: {},
 };
 
 export function toIsoDate(d: Date): string {
@@ -136,6 +144,17 @@ type HealthLogContextValue = {
   removeAppointment: (id: string) => void;
   addMedication: (entry: Omit<MedicationEntry, 'id'>) => void;
   removeMedication: (id: string) => void;
+  /** Mai adag bevétele / visszavonása. */
+  toggleMedicationTaken: (id: string) => void;
+  /** „Nem szedek gyógyszert” jelző; bekapcsolva a gyógyszerlista is ürül. */
+  setNoMeds: (value: boolean) => void;
+  /** Onboarding után: üres gyógyszerlista + a noMeds jelző beállítása. */
+  resetMedications: (noMeds: boolean) => void;
+  /** A profil felírt gyógyszereit szinkronizálja a bevételi listával. */
+  syncMedicationsFromProfile: (
+    entries: { name: string; since: string }[],
+    noMeds: boolean,
+  ) => void;
 };
 
 const HealthLogContext = createContext<HealthLogContextValue | null>(null);
@@ -161,6 +180,8 @@ export function HealthLogProvider({
             meals: parsed.meals ?? {},
             appointments: parsed.appointments ?? seedAppointments,
             medications: parsed.medications ?? seedMedications,
+            noMeds: parsed.noMeds ?? false,
+            takenDoses: parsed.takenDoses ?? {},
           });
         }
       } catch {
@@ -283,7 +304,64 @@ export function HealthLogProvider({
       update((prev) => ({
         ...prev,
         medications: [...prev.medications, full],
+        noMeds: false,
       }));
+    },
+    [update],
+  );
+
+  const setNoMeds = useCallback(
+    (value: boolean) => {
+      update((prev) => ({
+        ...prev,
+        noMeds: value,
+        medications: value ? [] : prev.medications,
+      }));
+    },
+    [update],
+  );
+
+  const resetMedications = useCallback(
+    (noMeds: boolean) => {
+      update((prev) => ({ ...prev, medications: [], noMeds }));
+    },
+    [update],
+  );
+
+  const syncMedicationsFromProfile = useCallback(
+    (entries: { name: string; since: string }[], noMeds: boolean) => {
+      update((prev) => {
+        if (noMeds) {
+          return { ...prev, noMeds: true, medications: [] };
+        }
+        const names = new Set(entries.map((e) => e.name.toLowerCase()));
+        const kept = prev.medications.filter(
+          (m) => !m.fromProfile && !names.has(m.name.toLowerCase()),
+        );
+        const fromProfile = entries.map((e, i) => {
+          const existing = prev.medications.find(
+            (m) => m.name.toLowerCase() === e.name.toLowerCase(),
+          );
+          if (existing) {
+            return existing.fromProfile
+              ? existing
+              : { ...existing, fromProfile: true as const };
+          }
+          return {
+            id: `profile-${e.name.toLowerCase()}-${i}`,
+            name: e.name,
+            dose: '—',
+            time: '8:00',
+            times: e.since ? `${e.since.slice(0, 7)}-től` : '1× naponta',
+            fromProfile: true,
+          };
+        });
+        return {
+          ...prev,
+          noMeds: false,
+          medications: [...fromProfile, ...kept],
+        };
+      });
     },
     [update],
   );
@@ -294,6 +372,23 @@ export function HealthLogProvider({
         ...prev,
         medications: prev.medications.filter((m) => m.id !== id),
       }));
+    },
+    [update],
+  );
+
+  const toggleMedicationTaken = useCallback(
+    (id: string) => {
+      const today = toIsoDate(new Date());
+      update((prev) => {
+        const current = (prev.takenDoses ?? {})[today] ?? [];
+        const next = current.includes(id)
+          ? current.filter((x) => x !== id)
+          : [...current, id];
+        return {
+          ...prev,
+          takenDoses: { ...(prev.takenDoses ?? {}), [today]: next },
+        };
+      });
     },
     [update],
   );
@@ -310,6 +405,10 @@ export function HealthLogProvider({
       removeAppointment,
       addMedication,
       removeMedication,
+      toggleMedicationTaken,
+      setNoMeds,
+      resetMedications,
+      syncMedicationsFromProfile,
     }),
     [
       ready,
@@ -322,6 +421,10 @@ export function HealthLogProvider({
       removeAppointment,
       addMedication,
       removeMedication,
+      toggleMedicationTaken,
+      setNoMeds,
+      resetMedications,
+      syncMedicationsFromProfile,
     ],
   );
 

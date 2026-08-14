@@ -3,6 +3,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import {
   Camera,
   CheckCircle2,
+  Circle as CircleIcon,
   Clock,
   Pill,
   Zap,
@@ -18,7 +19,12 @@ import {
 } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 
-import { BottomSheet, TogglePill, usePalette } from '@/components/figma/ui';
+import {
+  BottomSheet,
+  EmptyState,
+  TogglePill,
+  usePalette,
+} from '@/components/figma/ui';
 import {
   emerald400,
   font,
@@ -29,9 +35,11 @@ import {
 import {
   estimateCalories,
   mealTypeLabels,
+  toIsoDate,
   useHealthLog,
   type MealType,
 } from '@/context/HealthLogContext';
+import { useProfile } from '@/context/ProfileContext';
 
 function SaveButton({
   label,
@@ -787,25 +795,66 @@ export function MedicationSheet({
   onClose: () => void;
 }) {
   const p = usePalette();
-  const { log } = useHealthLog();
+  const { log, setNoMeds, toggleMedicationTaken } = useHealthLog();
+  const { updateProfile } = useProfile();
   const meds = log.medications;
-  const [taken, setTaken] = useState<Set<string>>(new Set());
+  const taken = new Set(log.takenDoses?.[toIsoDate(new Date())] ?? []);
   const [sideEffect, setSideEffect] = useState(false);
   const [sideEffectText, setSideEffectText] = useState('');
   const [missReason, setMissReason] = useState<string | null>(null);
 
-  const toggle = (id: string) =>
-    setTaken((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+  const toggle = (id: string) => toggleMedicationTaken(id);
 
   const dueNow = meds.filter((m) => m.time === '8:00');
   const dueLater = meds.filter((m) => m.time !== '8:00');
   const progress =
     meds.length > 0 ? (taken.size / meds.length) * 138 : 0;
+
+  if (meds.length === 0) {
+    return (
+      <BottomSheet
+        visible={visible}
+        onClose={onClose}
+        title="Gyógyszer bevétele">
+        <View style={[styles.sheetBody, { paddingBottom: 24 }]}>
+          {log.noMeds ? (
+            <EmptyState
+              emoji="🙌"
+              title="Nem szedsz gyógyszert"
+              text="Ezt jelezted nekünk, így itt nincs teendőd. Ha ez változik, a Szervező fülön bármikor felvehetsz új gyógyszert."
+            />
+          ) : (
+            <>
+              <EmptyState
+                emoji="💊"
+                title="Még nincs felvett gyógyszer"
+                text="A gyógyszereidet a profilodban vagy a Szervező fülön tudod felvenni — utána itt pipálhatod ki a napi adagokat."
+              />
+              <Pressable
+                onPress={() => {
+                  setNoMeds(true);
+                  updateProfile({ noPrescribedMeds: true, prescribedMeds: [] });
+                }}
+                style={({ pressed }) => [
+                  { alignSelf: 'center', padding: 6 },
+                  pressed && { opacity: 0.6 },
+                ]}>
+                <Text
+                  style={{
+                    fontSize: 13,
+                    fontFamily: font.bodySemi,
+                    color: violet[400],
+                    textDecorationLine: 'underline',
+                  }}>
+                  Nem szedek gyógyszert
+                </Text>
+              </Pressable>
+            </>
+          )}
+        </View>
+      </BottomSheet>
+    );
+  }
 
   return (
     <BottomSheet visible={visible} onClose={onClose} title="Gyógyszer bevétele">
@@ -917,12 +966,12 @@ export function MedicationSheet({
                         alignItems: 'center',
                         justifyContent: 'center',
                         backgroundColor: isTaken
-                          ? violet[600]
-                          : p.chipBg,
+                          ? p.chipBg
+                          : group.later
+                            ? p.chipBg
+                            : 'rgba(139,92,246,0.2)',
                       }}>
-                      {isTaken ? (
-                        <CheckCircle2 size={18} color="#fff" />
-                      ) : group.later ? (
+                      {group.later && !isTaken ? (
                         <Clock
                           size={18}
                           color={
@@ -930,7 +979,16 @@ export function MedicationSheet({
                           }
                         />
                       ) : (
-                        <Pill size={18} color={violet[400]} />
+                        <Pill
+                          size={18}
+                          color={
+                            isTaken
+                              ? p.dark
+                                ? 'rgba(255,255,255,0.3)'
+                                : '#E9D5FF'
+                              : violet[400]
+                          }
+                        />
                       )}
                     </View>
                     <View style={{ flex: 1 }}>
@@ -938,7 +996,14 @@ export function MedicationSheet({
                         style={{
                           fontFamily: font.display,
                           fontSize: 14,
-                          color: isTaken ? violet[300] : p.text,
+                          color: isTaken
+                            ? p.dark
+                              ? 'rgba(255,255,255,0.3)'
+                              : '#D8B4FE'
+                            : p.text,
+                          textDecorationLine: isTaken
+                            ? 'line-through'
+                            : 'none',
                         }}>
                         {m.name}
                       </Text>
@@ -951,16 +1016,27 @@ export function MedicationSheet({
                         {m.dose} · {group.later ? m.time : m.times}
                       </Text>
                     </View>
-                    {isTaken && !group.later ? (
-                      <Text
-                        style={{
-                          fontSize: 12,
-                          fontFamily: font.bodySemi,
-                          color: violet[400],
-                        }}>
-                        ✓ Bevéve
-                      </Text>
-                    ) : null}
+                    <View
+                      style={{
+                        width: 32,
+                        height: 32,
+                        borderRadius: 999,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        backgroundColor: isTaken
+                          ? violet[600]
+                          : p.chipBg,
+                        borderWidth: isTaken ? 0 : 1,
+                        borderColor: p.dark
+                          ? 'rgba(255,255,255,0.15)'
+                          : '#E9D5FF',
+                      }}>
+                      {isTaken ? (
+                        <CheckCircle2 size={16} color="#fff" />
+                      ) : (
+                        <CircleIcon size={16} color={p.muted} />
+                      )}
+                    </View>
                   </Pressable>
                 );
               })}

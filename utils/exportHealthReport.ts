@@ -32,6 +32,7 @@ type LogShape = {
   meals: Record<string, MealEntry[]>;
   medications: MedicationEntry[];
   appointments: AppointmentEntry[];
+  noMeds: boolean;
 };
 
 function esc(text: string): string {
@@ -411,7 +412,14 @@ export async function exportHealthReport(
   <h2>Aktuális gyógyszerek és kiegészítők</h2>
   <table>
     <thead><tr><th>Név</th><th style="width:100px">Adag</th><th style="width:80px">Időpont</th><th style="width:140px">Gyakoriság</th></tr></thead>
-    <tbody>${medRows || '<tr><td colspan="4" class="muted">Nincs rögzített gyógyszer.</td></tr>'}</tbody>
+    <tbody>${
+      medRows ||
+      `<tr><td colspan="4" class="muted">${
+        log.noMeds
+          ? 'A páciens jelzése szerint nem szed rendszeresen gyógyszert.'
+          : 'Nincs rögzített gyógyszer.'
+      }</td></tr>`
+    }</tbody>
   </table>
 
   <h2>Közelgő orvosi időpontok</h2>

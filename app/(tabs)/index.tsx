@@ -1,8 +1,10 @@
 import { LinearGradient } from 'expo-linear-gradient';
+import { useRouter } from 'expo-router';
 import {
   Bell,
   CheckCircle2,
   ChevronRight,
+  Circle,
   Clock,
   Dumbbell,
   Moon,
@@ -11,6 +13,7 @@ import {
   Sparkles,
   Stethoscope,
   Sun,
+  UserRound,
   UtensilsCrossed,
 } from 'lucide-react-native';
 import React, { useEffect, useRef, useState } from 'react';
@@ -97,8 +100,13 @@ export default function HomeScreen() {
   const { isDark, toggleTheme } = useAppTheme();
   const remission = profile.phase === 'remission';
 
-  const { log, setMoodForToday } = useHealthLog();
-  const mood = log.moods[toIsoDate(new Date())] ?? null;
+  const { log, setMoodForToday, toggleMedicationTaken } = useHealthLog();
+  const todayIso = toIsoDate(new Date());
+  const mood = log.moods[todayIso] ?? null;
+  const nextMed = log.medications[0];
+  const nextMedTaken = nextMed
+    ? (log.takenDoses?.[todayIso] ?? []).includes(nextMed.id)
+    : false;
   const [sheet, setSheet] = useState<SheetKind>(null);
   const [chatOpen, setChatOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -106,6 +114,22 @@ export default function HomeScreen() {
   const aiTargetRef = useTutorialTarget('home-ai');
   const moodTargetRef = useTutorialTarget('home-mood');
   const quickTargetRef = useTutorialTarget('home-quick');
+
+  const router = useRouter();
+
+  // Hiányzó profiladatok finom jelzése
+  const missingPersonal: string[] = [];
+  if (!profile.age.trim()) missingPersonal.push('életkor');
+  if (!profile.weightKg.trim()) missingPersonal.push('testsúly');
+  if (!profile.heightCm.trim()) missingPersonal.push('magasság');
+  const medsMissing =
+    log.medications.length === 0 &&
+    !log.noMeds &&
+    profile.prescribedMeds.length === 0 &&
+    !profile.noPrescribedMeds;
+  const missingAll = medsMissing
+    ? [...missingPersonal, 'gyógyszerek']
+    : missingPersonal;
 
   const moodAnim = useRef(new Animated.Value(3)).current;
   useEffect(() => {
@@ -255,6 +279,53 @@ export default function HomeScreen() {
             </Text>
           </View>
         </View>
+
+        {/* Profil kiegészítése — csak amíg hiányzik adat */}
+        {missingAll.length > 0 && (
+          <View style={{ paddingHorizontal: 20, marginBottom: 16 }}>
+            <Pressable
+              onPress={() =>
+                missingPersonal.length > 0
+                  ? setProfileOpen(true)
+                  : router.push('/schedule')
+              }
+              style={({ pressed }) =>
+                pressed && { transform: [{ scale: 0.98 }] }
+              }>
+              <GlassCard
+                style={{
+                  padding: 14,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 12,
+                }}>
+                <View style={styles.profileNudgeIcon}>
+                  <UserRound size={16} color={violet[400]} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text
+                    style={{
+                      fontFamily: font.display,
+                      fontSize: 13,
+                      color: p.text,
+                    }}>
+                    Fejezd be a profilod beállítását
+                  </Text>
+                  <Text
+                    style={{
+                      fontSize: 11,
+                      fontFamily: font.body,
+                      color: p.muted,
+                      marginTop: 1,
+                    }}>
+                    Hiányzik még: {missingAll.join(', ')}
+                  </Text>
+                </View>
+                <ChevronRight size={16} color={p.faint} />
+              </GlassCard>
+            </Pressable>
+          </View>
+        )}
 
         {/* AI kártya */}
         <View
@@ -426,46 +497,65 @@ export default function HomeScreen() {
                 </Text>
               </View>
             </View>
-            <View
-              style={[
-                styles.upcomingRow,
-                {
-                  marginTop: 12,
-                  paddingTop: 12,
-                  borderTopWidth: 1,
-                  borderTopColor: p.divider,
-                },
-              ]}>
+            {nextMed ? (
               <View
                 style={[
-                  styles.upcomingIcon,
-                  { backgroundColor: 'rgba(217,70,239,0.4)' },
+                  styles.upcomingRow,
+                  {
+                    marginTop: 12,
+                    paddingTop: 12,
+                    borderTopWidth: 1,
+                    borderTopColor: p.divider,
+                  },
                 ]}>
-                <Pill size={18} color={fuchsia400} />
+                <View
+                  style={[
+                    styles.upcomingIcon,
+                    { backgroundColor: 'rgba(217,70,239,0.4)' },
+                  ]}>
+                  <Pill size={18} color={fuchsia400} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text
+                    style={{
+                      fontFamily: font.display,
+                      fontSize: 14,
+                      color: p.text,
+                    }}>
+                    {nextMed.name} {nextMed.dose}
+                  </Text>
+                  <Text
+                    style={{
+                      fontSize: 12,
+                      fontFamily: font.body,
+                      color: p.muted,
+                    }}>
+                    Ma {nextMed.time} · {nextMed.times}
+                  </Text>
+                </View>
+                <Pressable
+                  onPress={() => toggleMedicationTaken(nextMed.id)}
+                  style={({ pressed }) => [
+                    styles.checkBtn,
+                    nextMedTaken
+                      ? { backgroundColor: violet[500] }
+                      : {
+                          backgroundColor: p.chipBg,
+                          borderWidth: 1,
+                          borderColor: p.dark
+                            ? 'rgba(255,255,255,0.15)'
+                            : '#E9D5FF',
+                        },
+                    pressed && { transform: [{ scale: 0.9 }] },
+                  ]}>
+                  {nextMedTaken ? (
+                    <CheckCircle2 size={16} color="#fff" />
+                  ) : (
+                    <Circle size={16} color={p.muted} />
+                  )}
+                </Pressable>
               </View>
-              <View style={{ flex: 1 }}>
-                <Text
-                  style={{
-                    fontFamily: font.display,
-                    fontSize: 14,
-                    color: p.text,
-                  }}>
-                  Mesalamine 800mg
-                </Text>
-                <Text
-                  style={{ fontSize: 12, fontFamily: font.body, color: p.muted }}>
-                  Következő dózis 2 ó 14 p múlva
-                </Text>
-              </View>
-              <Pressable
-                onPress={() => setSheet('medication')}
-                style={({ pressed }) => [
-                  styles.checkBtn,
-                  pressed && { transform: [{ scale: 0.9 }] },
-                ]}>
-                <CheckCircle2 size={16} color="#fff" />
-              </Pressable>
-            </View>
+            ) : null}
           </GlassCard>
         </View>
       </ScrollView>
@@ -488,10 +578,12 @@ export default function HomeScreen() {
         onClose={() => setChatOpen(false)}
         remission={remission}
       />
-      <ProfileModal
-        visible={profileOpen}
-        onClose={() => setProfileOpen(false)}
-      />
+      {profileOpen ? (
+        <ProfileModal
+          visible
+          onClose={() => setProfileOpen(false)}
+        />
+      ) : null}
     </Animated.View>
   );
 }
@@ -648,8 +740,15 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 999,
-    backgroundColor: violet[500],
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  profileNudgeIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(139,92,246,0.25)',
   },
 });

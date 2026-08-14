@@ -11,6 +11,13 @@ import React, {
 export type Diagnosis = 'crohn' | 'uc' | 'ibdu';
 export type Phase = 'remission' | 'flare' | 'unknown';
 
+/** Gyógyszer / vitamin / kiegészítő a kezdő dátummal. */
+export type SupplementEntry = {
+  name: string;
+  /** ISO dátum (YYYY-MM-DD) — mikortól szedi */
+  since: string;
+};
+
 export type Profile = {
   onboarded: boolean;
   loggedIn: boolean;
@@ -26,6 +33,18 @@ export type Profile = {
   weightKg: string;
   heightCm: string;
   avatarColorIdx: number;
+  prescribedMeds: SupplementEntry[];
+  biologics: SupplementEntry[];
+  vitamins: SupplementEntry[];
+  fitnessSupplements: SupplementEntry[];
+  noPrescribedMeds: boolean;
+  noBiologics: boolean;
+  noVitamins: boolean;
+  noFitnessSupplements: boolean;
+  noTriggerFoods: boolean;
+  noExercise: boolean;
+  workoutFrequency: number;
+  workoutFocus: string[];
 };
 
 const STORAGE_KEY = 'crohnsync-profile-v1';
@@ -44,6 +63,18 @@ const defaultProfile: Profile = {
   weightKg: '',
   heightCm: '',
   avatarColorIdx: 0,
+  prescribedMeds: [],
+  biologics: [],
+  vitamins: [],
+  fitnessSupplements: [],
+  noPrescribedMeds: false,
+  noBiologics: false,
+  noVitamins: false,
+  noFitnessSupplements: false,
+  noTriggerFoods: false,
+  noExercise: false,
+  workoutFrequency: 3,
+  workoutFocus: [],
 };
 
 type ProfileContextValue = {
@@ -57,12 +88,36 @@ type ProfileContextValue = {
   completeOnboarding: (
     patch: Pick<
       Profile,
-      'name' | 'diagnosis' | 'phase' | 'triggerFoods' | 'goals'
+      | 'name'
+      | 'diagnosis'
+      | 'phase'
+      | 'triggerFoods'
+      | 'goals'
+      | 'noPrescribedMeds'
     >,
   ) => void;
 };
 
 const ProfileContext = createContext<ProfileContextValue | null>(null);
+
+/** Régi string[] formátumról SupplementEntry[]-re. */
+export function asSupplementEntries(raw: unknown): SupplementEntry[] {
+  if (!Array.isArray(raw)) return [];
+  const out: SupplementEntry[] = [];
+  for (const item of raw) {
+    if (typeof item === 'string' && item.trim()) {
+      out.push({ name: item.trim(), since: '' });
+    } else if (item && typeof item === 'object' && 'name' in item) {
+      const name = String((item as SupplementEntry).name ?? '').trim();
+      if (!name) continue;
+      out.push({
+        name,
+        since: String((item as SupplementEntry).since ?? ''),
+      });
+    }
+  }
+  return out;
+}
 
 export function ProfileProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<Profile>(defaultProfile);
@@ -74,7 +129,15 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
       try {
         const raw = await AsyncStorage.getItem(STORAGE_KEY);
         if (raw && !cancelled) {
-          setProfile({ ...defaultProfile, ...(JSON.parse(raw) as Profile) });
+          const parsed = JSON.parse(raw) as Partial<Profile>;
+          setProfile({
+            ...defaultProfile,
+            ...parsed,
+            prescribedMeds: asSupplementEntries(parsed.prescribedMeds),
+            biologics: asSupplementEntries(parsed.biologics),
+            vitamins: asSupplementEntries(parsed.vitamins),
+            fitnessSupplements: asSupplementEntries(parsed.fitnessSupplements),
+          });
         }
       } catch {
         // keep defaults
@@ -121,7 +184,12 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     (
       patch: Pick<
         Profile,
-        'name' | 'diagnosis' | 'phase' | 'triggerFoods' | 'goals'
+        | 'name'
+        | 'diagnosis'
+        | 'phase'
+        | 'triggerFoods'
+        | 'goals'
+        | 'noPrescribedMeds'
       >,
     ) => {
       setProfile((prev) => {
