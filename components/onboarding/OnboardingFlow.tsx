@@ -61,7 +61,7 @@ export function OnboardingFlow() {
   const { profile, completeOnboarding } = useProfile();
   const { resetMedications } = useHealthLog();
   const [step, setStep] = useState(0);
-  const [name, setName] = useState('');
+  const [name, setName] = useState(profile.name);
   const [diagnosis, setDiagnosis] = useState<Diagnosis>('crohn');
   const [phase, setPhase] = useState<Phase>('remission');
   const [takesMeds, setTakesMeds] = useState(true);

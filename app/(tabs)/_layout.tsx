@@ -10,8 +10,9 @@ import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { GlobalFloatingFlora } from '@/components/companion/GlobalFloatingFlora';
 import { usePalette } from '@/components/figma/ui';
-import { TutorialOverlay } from '@/components/tutorial/TutorialOverlay';
+import { TutorialManager } from '@/components/tutorial/TutorialManager';
 import { font, violet } from '@/constants/figma';
 import { useTutorial } from '@/context/TutorialContext';
 
@@ -27,6 +28,12 @@ const TAB_META: Record<
   lifestyle: { label: 'Életmód', Icon: UtensilsCrossed },
   schedule: { label: 'Szervező', Icon: CalendarDays },
   medical: { label: 'Egészség', Icon: HeartPulse },
+};
+
+const TAB_TARGET_IDS: Record<string, string> = {
+  lifestyle: 'tab-lifestyle',
+  schedule: 'tab-organizer',
+  medical: 'tab-health',
 };
 
 type TabBarProps = {
@@ -67,7 +74,10 @@ function FigmaTabBar({ state, navigation }: TabBarProps) {
           return (
             <Pressable
               key={route.key}
-              ref={(node) => registerTarget(`tab-${route.name}`, node)}
+              ref={(node) => {
+                const targetId = TAB_TARGET_IDS[route.name];
+                if (targetId) registerTarget(targetId, node);
+              }}
               collapsable={false}
               accessibilityRole="button"
               accessibilityState={focused ? { selected: true } : {}}
@@ -128,7 +138,8 @@ export default function TabLayout() {
         <Tabs.Screen name="schedule" />
         <Tabs.Screen name="medical" />
       </Tabs>
-      <TutorialOverlay />
+      <GlobalFloatingFlora />
+      <TutorialManager />
     </View>
   );
 }

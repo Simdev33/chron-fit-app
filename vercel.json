@@ -1,0 +1,19 @@
+{
+  "buildCommand": "npx expo export -p web",
+  "outputDirectory": "dist/client",
+  "devCommand": "npx expo start --web",
+  "cleanUrls": true,
+  "framework": null,
+  "functions": {
+    "api/index.ts": {
+      "runtime": "@vercel/node@5.1.8",
+      "includeFiles": "dist/server/**"
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/api/index"
+    }
+  ]
+}

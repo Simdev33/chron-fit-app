@@ -1,6 +1,14 @@
 import Slider from '@react-native-community/slider';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Camera, ChevronLeft } from 'lucide-react-native';
+import {
+  Camera,
+  ChevronLeft,
+  Package,
+  Pill,
+  Plus,
+  Syringe,
+  Trash2,
+} from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
 import {
   KeyboardAvoidingView,
@@ -16,7 +24,6 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
-  DatedTagInput,
   GlassCard,
   SectionHeader,
   TagInput,
@@ -24,11 +31,11 @@ import {
   useKeyboardHeight,
   usePalette,
 } from '@/components/figma/ui';
+import { AddMedicationModal } from '@/components/organizer/AddMedicationModal';
 import { AVATAR_COLORS, blue, font, violet } from '@/constants/figma';
 import { useHealthLog } from '@/context/HealthLogContext';
 import {
   type Diagnosis,
-  type SupplementEntry,
   diagnosisLabels,
   useProfile,
 } from '@/context/ProfileContext';
@@ -71,7 +78,7 @@ export function ProfileModal({
   const insets = useSafeAreaInsets();
   const keyboardHeight = useKeyboardHeight();
   const { profile, updateProfile } = useProfile();
-  const { syncMedicationsFromProfile } = useHealthLog();
+  const { log, addMedication, removeMedication } = useHealthLog();
   const remission = profile.phase === 'remission';
 
   const [name, setName] = useState(profile.name);
@@ -87,19 +94,8 @@ export function ProfileModal({
     'Terminális ileum',
     'Vakbél',
   ]);
-  const [meds, setMeds] = useState<SupplementEntry[]>(profile.prescribedMeds);
-  const [bio, setBio] = useState<SupplementEntry[]>(profile.biologics);
-  const [vitamins, setVitamins] = useState<SupplementEntry[]>(profile.vitamins);
-  const [supplements, setSupplements] = useState<SupplementEntry[]>(
-    profile.fitnessSupplements,
-  );
   const [triggers, setTriggers] = useState<string[]>(profile.triggerFoods);
-  const [noMedsFlag, setNoMedsFlag] = useState(profile.noPrescribedMeds);
-  const [noBio, setNoBio] = useState(profile.noBiologics);
-  const [noVitamins, setNoVitamins] = useState(profile.noVitamins);
-  const [noSupplements, setNoSupplements] = useState(
-    profile.noFitnessSupplements,
-  );
+  const [addMedicationOpen, setAddMedicationOpen] = useState(false);
   const [noTriggers, setNoTriggers] = useState(profile.noTriggerFoods);
   const [stoma, setStoma] = useState(false);
   const [stomaType, setStomaType] = useState('');
@@ -123,15 +119,7 @@ export function ProfileModal({
     setHeight(profile.heightCm);
     setColorIdx(profile.avatarColorIdx);
     setCondition(diagnosisLabels[profile.diagnosis] ?? CONDITIONS[0]);
-    setMeds(profile.prescribedMeds);
-    setBio(profile.biologics);
-    setVitamins(profile.vitamins);
-    setSupplements(profile.fitnessSupplements);
     setTriggers(profile.triggerFoods);
-    setNoMedsFlag(profile.noPrescribedMeds);
-    setNoBio(profile.noBiologics);
-    setNoVitamins(profile.noVitamins);
-    setNoSupplements(profile.noFitnessSupplements);
     setNoTriggers(profile.noTriggerFoods);
     setFrequency(profile.workoutFrequency || 3);
     setFocus(profile.workoutFocus);
@@ -147,35 +135,6 @@ export function ProfileModal({
       heightCm: height,
     });
     onClose();
-  };
-
-  const commitPrescribed = (next: SupplementEntry[], none: boolean) => {
-    const list = none ? [] : next;
-    setMeds(list);
-    setNoMedsFlag(none);
-    updateProfile({ prescribedMeds: list, noPrescribedMeds: none });
-    syncMedicationsFromProfile(list, none);
-  };
-
-  const commitBio = (next: SupplementEntry[], none: boolean) => {
-    const list = none ? [] : next;
-    setBio(list);
-    setNoBio(none);
-    updateProfile({ biologics: list, noBiologics: none });
-  };
-
-  const commitVitamins = (next: SupplementEntry[], none: boolean) => {
-    const list = none ? [] : next;
-    setVitamins(list);
-    setNoVitamins(none);
-    updateProfile({ vitamins: list, noVitamins: none });
-  };
-
-  const commitSupplements = (next: SupplementEntry[], none: boolean) => {
-    const list = none ? [] : next;
-    setSupplements(list);
-    setNoSupplements(none);
-    updateProfile({ fitnessSupplements: list, noFitnessSupplements: none });
   };
 
   const commitTriggers = (next: string[], none: boolean) => {
@@ -641,80 +600,102 @@ export function ProfileModal({
           {/* Gyógyszerek */}
           <SectionHeader
             title="Gyógyszerek és étrend-kiegészítők"
-            subtitle="Minden bejegyzést megosztunk az AI asszisztenseddel"
+            subtitle="Ugyanaz a lista jelenik meg a Szervező idővonalán is"
           />
-          <View style={{ paddingHorizontal: 20, gap: 20 }}>
-            {(
-              [
-                [
-                  'Felírt gyógyszerek',
-                  meds,
-                  (next: SupplementEntry[]) => commitPrescribed(next, false),
-                  'pl. Mesalamine 800mg',
-                  'Nem szedek felírt gyógyszert',
-                  noMedsFlag,
-                  (none: boolean) => commitPrescribed(none ? [] : meds, none),
-                ],
-                [
-                  'Biológiai terápiák',
-                  bio,
-                  (next: SupplementEntry[]) => commitBio(next, false),
-                  'pl. Vedolizumab, Adalimumab',
-                  'Nem kapok biológiai terápiát',
-                  noBio,
-                  (none: boolean) => commitBio(none ? [] : bio, none),
-                ],
-                [
-                  'Napi vitaminok',
-                  vitamins,
-                  (next: SupplementEntry[]) => commitVitamins(next, false),
-                  'pl. D3-vitamin, vas, kalcium',
-                  'Nem szedek vitamint',
-                  noVitamins,
-                  (none: boolean) => commitVitamins(none ? [] : vitamins, none),
-                ],
-                [
-                  'Fitnesz kiegészítők',
-                  supplements,
-                  (next: SupplementEntry[]) => commitSupplements(next, false),
-                  'pl. Whey izolátum, kreatin',
-                  'Nem szedek kiegészítőt',
-                  noSupplements,
-                  (none: boolean) =>
-                    commitSupplements(none ? [] : supplements, none),
-                ],
-              ] as [
-                string,
-                SupplementEntry[],
-                (v: SupplementEntry[]) => void,
-                string,
-                string,
-                boolean,
-                (v: boolean) => void,
-              ][]
-            ).map(
-              ([label, tags, setTags, placeholder, noneLabel, none, setNone]) => (
-                <View key={label}>
-                  <Text
+          <View style={{ paddingHorizontal: 20, gap: 12 }}>
+            {log.medications.map((medication) => {
+              const ItemIcon =
+                medication.type === 'pill'
+                  ? Pill
+                  : medication.type === 'biologic'
+                    ? Syringe
+                    : Package;
+              return (
+                <GlassCard key={medication.id} style={{ padding: 14 }}>
+                  <View
                     style={{
-                      fontFamily: font.display,
-                      fontSize: 14,
-                      marginBottom: 8,
-                      color: p.text,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 12,
                     }}>
-                    {label}
-                  </Text>
-                  <DatedTagInput
-                    tags={tags}
-                    setTags={setTags}
-                    placeholder={placeholder}
-                    noneLabel={noneLabel}
-                    noneActive={none}
-                    onNoneChange={setNone}
-                  />
-                </View>
-              ),
-            )}
+                    <View
+                      style={[
+                        styles.medicationIcon,
+                        {
+                          backgroundColor:
+                            medication.type === 'pill'
+                              ? 'rgba(139,92,246,0.2)'
+                              : medication.type === 'biologic'
+                                ? 'rgba(217,70,239,0.2)'
+                              : 'rgba(99,102,241,0.2)',
+                        },
+                      ]}>
+                      <ItemIcon size={18} color={violet[400]} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text
+                        style={{
+                          color: p.text,
+                          fontFamily: font.display,
+                          fontSize: 14,
+                        }}>
+                        {medication.name}
+                      </Text>
+                      <Text
+                        style={{
+                          color: p.muted,
+                          fontFamily: font.body,
+                          fontSize: 11,
+                          marginTop: 2,
+                        }}>
+                        {medication.dose} ·{' '}
+                        {medication.type === 'biologic'
+                          ? `${
+                              medication.administrationLocation === 'hospital'
+                                ? 'Kórházban'
+                                : 'Otthon'
+                            } · ${medication.intervalMonths ?? 1} havonta`
+                          : medication.times.join(', ')}
+                      </Text>
+                      <Text
+                        style={{
+                          color: p.faint,
+                          fontFamily: font.body,
+                          fontSize: 10,
+                          marginTop: 3,
+                        }}>
+                        Mióta szedi: {medication.since || 'nincs megadva'}
+                        {medication.type === 'biologic'
+                          ? ` · Következő: ${
+                              medication.nextDoseDate ?? 'nincs kiszámítva'
+                            }`
+                          : ` · ${medication.inventoryRemaining} adag`}
+                      </Text>
+                    </View>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={`${medication.name} törlése`}
+                      hitSlop={8}
+                      onPress={() => removeMedication(medication.id)}
+                      style={styles.medicationDelete}>
+                      <Trash2 size={15} color="#F87171" />
+                    </Pressable>
+                  </View>
+                </GlassCard>
+              );
+            })}
+
+            <Pressable
+              onPress={() => setAddMedicationOpen(true)}
+              style={({ pressed }) => [
+                styles.addMedicationButton,
+                pressed && { transform: [{ scale: 0.98 }] },
+              ]}>
+              <Plus size={17} color="#fff" strokeWidth={2.5} />
+              <Text style={styles.addMedicationText}>
+                Új gyógyszer vagy kiegészítő
+              </Text>
+            </Pressable>
           </View>
 
           {/* Trigger ételek */}
@@ -1212,6 +1193,42 @@ export function ProfileModal({
               </View>
             </View>
 
+          </View>
+
+          {/* Flóra */}
+          <SectionHeader
+            title="Flóra asszisztens"
+            subtitle="A lebegő segítő megjelenítése a képernyőn"
+          />
+          <View style={{ paddingHorizontal: 20, gap: 20, paddingBottom: 16 }}>
+            <GlassCard style={{ padding: 16 }}>
+              <View style={styles.toggleHead}>
+                <View style={{ flex: 1, paddingRight: 12 }}>
+                  <Text
+                    style={{
+                      fontFamily: font.display,
+                      fontSize: 14,
+                      color: p.text,
+                    }}>
+                    Lebegő Flóra
+                  </Text>
+                  <Text
+                    style={{
+                      fontSize: 12,
+                      fontFamily: font.body,
+                      color: p.muted,
+                    }}>
+                    Húzd a képernyő közepére a bezáráshoz — itt bármikor
+                    visszahozhatod.
+                  </Text>
+                </View>
+                <TogglePill
+                  value={!profile.floraHidden}
+                  onChange={(next) => updateProfile({ floraHidden: !next })}
+                />
+              </View>
+            </GlassCard>
+
             <Pressable onPress={flushAndClose}>
               <LinearGradient
                 colors={[violet[600], violet[700]]}
@@ -1235,6 +1252,14 @@ export function ProfileModal({
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+      <AddMedicationModal
+        visible={addMedicationOpen}
+        onClose={() => setAddMedicationOpen(false)}
+        onAdd={(item) => {
+          addMedication(item);
+          updateProfile({ noPrescribedMeds: false });
+        }}
+      />
     </Modal>
   );
 }
@@ -1280,6 +1305,42 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     justifyContent: 'space-between',
     gap: 12,
+  },
+  medicationIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  medicationDelete: {
+    width: 34,
+    height: 34,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(248,113,113,0.13)',
+  },
+  addMedicationButton: {
+    minHeight: 50,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: violet[400],
+    backgroundColor: violet[600],
+    shadowColor: violet[500],
+    shadowOpacity: 0.45,
+    shadowRadius: 13,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 7,
+  },
+  addMedicationText: {
+    color: '#fff',
+    fontFamily: font.display,
+    fontSize: 13,
   },
   freqBtn: {
     height: 40,

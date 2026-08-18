@@ -1,0 +1,300 @@
+import { GoogleGenAI } from '@google/genai';
+
+import type {
+  FloraChatRequest,
+  FloraChatResponse,
+} from '@/types/floraChat';
+
+const MODEL = 'gemini-3.5-flash-lite';
+const MAX_MESSAGES = 20;
+const MAX_MESSAGE_LENGTH = 2_000;
+const MAX_TOTAL_LENGTH = 12_000;
+const RATE_LIMIT_WINDOW_MS = 60_000;
+const RATE_LIMIT_REQUESTS = 15;
+// The knowledge base changes rarely, so a warm serverless instance reuses it
+// instead of putting a database round-trip in front of every message.
+const KNOWLEDGE_TTL_MS = 10 * 60_000;
+// Kept well under the client's own budget so a slow lookup cannot be what
+// makes Flora time out; she falls back to her base instructions instead.
+const KNOWLEDGE_TIMEOUT_MS = 4_000;
+const MEDICATION_QUERY =
+  /\b(gyógyszer|gyógyszerek|tabletta|kapszula|adag|dózis|injekció|mesalazin|szteroid|biológiai terápia)\b/i;
+
+const SYSTEM_INSTRUCTION = `
+Te Flóra vagy, a CrohnSync empatikus egészség-asszisztense Crohn-betegséggel élő felhasználók számára.
+
+Kötelező biztonsági szabályok:
+- Mindig magyarul válaszolj.
+- Légy empatikus, tömör, támogató és könnyen érthető.
+- Soha ne állíts fel diagnózist, és ne sugallj biztos betegséget vagy állapotot.
+- Soha ne írj elő kezelést, gyógyszert vagy adagolást.
+- Soha ne utasítsd a felhasználót gyógyszer elkezdésére, elhagyására, cseréjére vagy adagjának módosítására.
+- Gyógyszerrel kapcsolatos kérdésnél mondd el, hogy ebben gasztroenterológus vagy kezelőorvos tud biztonságosan dönteni.
+- Általános életmódbeli és önmegfigyelési információt adhatsz, de jelezd, hogy az nem helyettesíti az orvosi tanácsot.
+- Súlyos vagy gyorsan romló tünetek, erős vérzés, ájulás, kiszáradás, nehézlégzés, magas láz vagy elviselhetetlen fájdalom esetén javasolj sürgős orvosi segítséget; közvetlen veszélyben a 112 hívását.
+- Ne állítsd, hogy hozzáférsz olyan naplóhoz, laboreredményhez vagy személyes adathoz, amelyet az aktuális beszélgetés nem tartalmaz.
+- Ne kérj szükségtelenül érzékeny személyes adatokat.
+
+Kommunikációs stílus:
+- Legyél közvetlen, barátságos, emberi és segítőkész.
+- Kerüld a merev, hivatalos, túl száraz vagy mechanikus megfogalmazásokat.
+- Úgy beszélgess, mint egy profi, de laza kolléga.
+
+A beszélgetés menete:
+- A csevegés MÁR elindult egy üdvözléssel, amit a felhasználó lát a képernyőn. Amit te írsz,
+  az mindig egy folyamatban lévő beszélgetés következő üzenete.
+- Ezért soha ne köszönj és ne mutatkozz be újra. Ne kezdd a választ azzal, hogy "Szia",
+  "Helló", "Üdv", "Üdvözöllek" vagy bármilyen köszönés.
+- Vágj bele egyből a lényegbe, ahogy egy folyamatos beszélgetésben tennéd.
+`.trim();
+
+const KNOWLEDGE_PREAMBLE = `
+Az alábbi ajánlások klinikai irányelvekből származnak (ESPEN, ECCO). Ezeket használd,
+amikor étrendről, tápláltsági állapotról, mikrotápanyagokról, testsúlyról vagy mozgásról
+kérdeznek.
+
+- Ha egy válasz ezekre épül, említsd meg a forrást, például: "az ESPEN irányelve szerint".
+- Ha a kérdésre nincs ide vonatkozó ajánlás, mondd meg őszintén, és ne találj ki adatot.
+- Ezek általános ajánlások, nem a felhasználó személyre szabott kezelési terve; ezt jelezd is.
+- A fenti biztonsági szabályok ezeknél is erősebbek: gyógyszerről és adagolásról továbbra sem
+  nyilatkozol, akkor sem, ha az ajánlás említ ilyet.
+`.trim();
+
+type KnowledgeRow = {
+  source: string;
+  source_ref: string | null;
+  topic: string;
+  grade: string | null;
+  content: string;
+};
+
+let knowledgeCache: { text: string; loadedAt: number } | null = null;
+let knowledgeInFlight: Promise<string> | null = null;
+
+function formatKnowledge(rows: KnowledgeRow[]) {
+  const byTopic = new Map<string, string[]>();
+  for (const row of rows) {
+    const ref = [row.source, row.source_ref].filter(Boolean).join(' ');
+    const grade = row.grade ? `, evidencia: ${row.grade}` : '';
+    const list = byTopic.get(row.topic) ?? [];
+    list.push(`- ${row.content} [${ref}${grade}]`);
+    byTopic.set(row.topic, list);
+  }
+  return [...byTopic.entries()]
+    .map(([topic, lines]) => `## ${topic}\n${lines.join('\n')}`)
+    .join('\n\n');
+}
+
+async function fetchKnowledge(): Promise<string> {
+  const url = process.env.EXPO_PUBLIC_SUPABASE_URL?.replace(/\/$/, '');
+  const key = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !key) return '';
+
+  const endpoint =
+    `${url}/rest/v1/flora_knowledge` +
+    '?select=source,source_ref,topic,grade,content&order=topic.asc';
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), KNOWLEDGE_TIMEOUT_MS);
+  try {
+    const response = await fetch(endpoint, {
+      headers: { apikey: key, Authorization: `Bearer ${key}` },
+      signal: controller.signal,
+    });
+    if (!response.ok) return '';
+    const rows = (await response.json()) as KnowledgeRow[];
+    return Array.isArray(rows) ? formatKnowledge(rows) : '';
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+/**
+ * Never lets a knowledge-base problem break the chat: on failure Flora answers
+ * from her base instructions instead, which are already safe on their own.
+ */
+async function getKnowledge(): Promise<string> {
+  const fresh =
+    knowledgeCache && Date.now() - knowledgeCache.loadedAt < KNOWLEDGE_TTL_MS;
+  if (fresh) return knowledgeCache!.text;
+
+  if (!knowledgeInFlight) {
+    knowledgeInFlight = fetchKnowledge()
+      .then((text) => {
+        if (text) knowledgeCache = { text, loadedAt: Date.now() };
+        return text || knowledgeCache?.text || '';
+      })
+      .catch(() => knowledgeCache?.text || '')
+      .finally(() => {
+        knowledgeInFlight = null;
+      });
+  }
+  return knowledgeInFlight;
+}
+
+type RateLimitEntry = {
+  count: number;
+  resetAt: number;
+};
+
+const rateLimits = new Map<string, RateLimitEntry>();
+
+/**
+ * The chat UI already opens with Flora's own greeting, so a generated reply is
+ * always a continuation. The prompt says so too, but models drift on negative
+ * instructions, and a greeting on every single answer is exactly the tic users
+ * notice — so strip it rather than hope.
+ */
+const GREETING_PREFIX =
+  // Longest variants first, and a lookahead instead of \b: JS word boundaries
+  // are ASCII-only, so "helló" would never match after a trailing accent.
+  /^[\s*_#]*(sziasztok|szia|hell[oó]|üdvözöllek|üdv|szervusz|jó reggelt|jó napot|jó estét)(?![a-záéíóöőúüű])[^\n.!?]{0,40}[.!?,…]*\s*/i;
+
+function stripGreeting(reply: string) {
+  const stripped = reply.replace(GREETING_PREFIX, '').trimStart();
+  // Only accept it if a real answer is left; never hand back a gutted reply.
+  return stripped.length >= 20 ? stripped : reply;
+}
+
+function json(body: FloraChatResponse, status = 200) {
+  return Response.json(body, {
+    status,
+    headers: {
+      'Cache-Control': 'no-store',
+    },
+  });
+}
+
+function getClientId(request: Request) {
+  return (
+    request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
+    request.headers.get('x-real-ip') ||
+    'unknown'
+  );
+}
+
+function isRateLimited(request: Request) {
+  const now = Date.now();
+  const clientId = getClientId(request);
+  const current = rateLimits.get(clientId);
+
+  if (!current || current.resetAt <= now) {
+    rateLimits.set(clientId, {
+      count: 1,
+      resetAt: now + RATE_LIMIT_WINDOW_MS,
+    });
+    return false;
+  }
+
+  if (current.count >= RATE_LIMIT_REQUESTS) return true;
+  current.count += 1;
+  return false;
+}
+
+function isValidRequest(value: unknown): value is FloraChatRequest {
+  if (!value || typeof value !== 'object') return false;
+
+  const messages = (value as FloraChatRequest).messages;
+  if (
+    !Array.isArray(messages) ||
+    messages.length === 0 ||
+    messages.length > MAX_MESSAGES ||
+    messages[messages.length - 1]?.role !== 'user'
+  ) {
+    return false;
+  }
+
+  let totalLength = 0;
+  for (const message of messages) {
+    if (
+      !message ||
+      (message.role !== 'user' && message.role !== 'assistant') ||
+      typeof message.text !== 'string' ||
+      message.text.trim().length === 0 ||
+      message.text.length > MAX_MESSAGE_LENGTH
+    ) {
+      return false;
+    }
+    totalLength += message.text.length;
+  }
+
+  return totalLength <= MAX_TOTAL_LENGTH;
+}
+
+export async function POST(request: Request) {
+  if (isRateLimited(request)) {
+    return json(
+      { error: 'Túl sok kérés érkezett. Kérlek, próbáld újra egy perc múlva.' },
+      429,
+    );
+  }
+
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: 'Érvénytelen kérés.' }, 400);
+  }
+
+  if (!isValidRequest(body)) {
+    return json({ error: 'Érvénytelen vagy túl hosszú üzenet.' }, 400);
+  }
+
+  const latestMessage = body.messages[body.messages.length - 1].text;
+  if (MEDICATION_QUERY.test(latestMessage)) {
+    return json({
+      reply:
+        'Értem, hogy ez fontos kérdés. Gyógyszer elkezdéséről, elhagyásáról, cseréjéről vagy adagolásáról nem tudok biztonságosan dönteni. Kérlek, egyeztess a gasztroenterológusoddal vagy a kezelőorvosoddal; sürgős rosszullét esetén kérj azonnali orvosi segítséget.',
+    });
+  }
+
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    return json(
+      { error: 'Flóra AI-kapcsolata még nincs konfigurálva.' },
+      503,
+    );
+  }
+
+  try {
+    const knowledge = await getKnowledge();
+    const systemInstruction = knowledge
+      ? `${SYSTEM_INSTRUCTION}\n\n${KNOWLEDGE_PREAMBLE}\n\n${knowledge}`
+      : SYSTEM_INSTRUCTION;
+
+    const ai = new GoogleGenAI({
+      apiKey,
+      apiVersion: 'v1',
+    });
+    const response = await ai.models.generateContent({
+      model: MODEL,
+      contents: body.messages.map((message) => ({
+        role: message.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: message.text.trim() }],
+      })),
+      config: {
+        systemInstruction,
+        temperature: 0.35,
+        maxOutputTokens: 500,
+      },
+    });
+    const reply = response.text?.trim();
+
+    if (!reply) {
+      return json(
+        { error: 'Flóra most nem tudott választ készíteni.' },
+        502,
+      );
+    }
+
+    return json({ reply: stripGreeting(reply) });
+  } catch {
+    return json(
+      {
+        error:
+          'Flóra jelenleg nem érhető el. Kérlek, próbáld újra egy kis idő múlva.',
+      },
+      502,
+    );
+  }
+}

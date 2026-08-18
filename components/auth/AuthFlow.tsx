@@ -31,11 +31,15 @@ function isValidEmail(email: string): boolean {
   return /^\S+@\S+\.\S+$/.test(email.trim());
 }
 
-export function AuthFlow() {
+export function AuthFlow({
+  initialScreen = 'welcome',
+}: {
+  initialScreen?: Screen;
+}) {
   const p = usePalette();
   const { signIn, signUp } = useProfile();
 
-  const [screen, setScreen] = useState<Screen>('welcome');
+  const [screen, setScreen] = useState<Screen>(initialScreen);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);

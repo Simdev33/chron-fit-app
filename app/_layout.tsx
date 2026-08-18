@@ -12,12 +12,14 @@ import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import 'react-native-reanimated';
 
 import { AuthFlow } from '@/components/auth/AuthFlow';
 import { WelcomeSplash } from '@/components/auth/WelcomeSplash';
 import { OnboardingFlow } from '@/components/onboarding/OnboardingFlow';
-import { HealthLogProvider, useHealthLog } from '@/context/HealthLogContext';
+import { FloraSceneProvider } from '@/context/FloraSceneContext';
+import { HealthLogProvider } from '@/context/HealthLogContext';
 import { ProfileProvider, useProfile } from '@/context/ProfileContext';
 import { AppThemeProvider, useAppTheme } from '@/context/ThemeContext';
 import { TutorialProvider } from '@/context/TutorialContext';
@@ -54,61 +56,50 @@ export default function RootLayout() {
   }
 
   return (
-    <AppThemeProvider>
-      <ProfileProvider>
-        <HealthLogProvider>
-          <TutorialProvider>
-            <ProfileMedsSync />
-            <RootLayoutNav />
-          </TutorialProvider>
-        </HealthLogProvider>
-      </ProfileProvider>
-    </AppThemeProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <AppThemeProvider>
+        <ProfileProvider>
+          <HealthLogProvider>
+            <TutorialProvider>
+              <FloraSceneProvider>
+                <RootLayoutNav />
+              </FloraSceneProvider>
+            </TutorialProvider>
+          </HealthLogProvider>
+        </ProfileProvider>
+      </AppThemeProvider>
+    </GestureHandlerRootView>
   );
-}
-
-/** A profil felírt gyógyszerei azonnal megjelenjenek a bevételi listában. */
-function ProfileMedsSync() {
-  const { ready: profileReady, profile } = useProfile();
-  const { ready: logReady, syncMedicationsFromProfile } = useHealthLog();
-
-  useEffect(() => {
-    if (!profileReady || !logReady) return;
-    syncMedicationsFromProfile(
-      profile.prescribedMeds,
-      profile.noPrescribedMeds,
-    );
-  }, [
-    profileReady,
-    logReady,
-    profile.prescribedMeds,
-    profile.noPrescribedMeds,
-    syncMedicationsFromProfile,
-  ]);
-
-  return null;
 }
 
 function RootLayoutNav() {
   const { isDark } = useAppTheme();
-  const { ready, profile } = useProfile();
-  const [splashDone, setSplashDone] = useState(false);
+  const { ready, profile, updateProfile } = useProfile();
+  const [introDone, setIntroDone] = useState(false);
 
   if (!ready) {
     return null;
   }
 
   let content: React.ReactNode;
-  if (!splashDone) {
-    content = <WelcomeSplash onDone={() => setSplashDone(true)} />;
+  if (!profile.loggedIn && !introDone) {
+    content = (
+      <WelcomeSplash
+        onDone={(name) => {
+          updateProfile({ name });
+          setIntroDone(true);
+        }}
+      />
+    );
   } else if (!profile.loggedIn) {
-    content = <AuthFlow />;
+    content = <AuthFlow initialScreen="signup" />;
   } else if (!profile.onboarded) {
     content = <OnboardingFlow />;
   } else {
     content = (
       <Stack>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="chatbot" options={{ headerShown: false }} />
       </Stack>
     );
   }

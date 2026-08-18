@@ -16,18 +16,23 @@ import {
   UserRound,
   UtensilsCrossed,
 } from 'lucide-react-native';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
-  Animated,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+  withTiming,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { AIChatModal } from '@/components/figma/AIChatModal';
+import { BackgroundWrapper } from '@/components/BackgroundWrapper';
 import { ProfileModal } from '@/components/figma/ProfileModal';
 import {
   MealSheet,
@@ -47,17 +52,14 @@ import {
 import {
   MOOD_EMOJI,
   MOOD_LABELS,
+  medicationDoseKey,
   toIsoDate,
   useHealthLog,
 } from '@/context/HealthLogContext';
+import { useFloraScene } from '@/context/FloraSceneContext';
 import { useProfile } from '@/context/ProfileContext';
 import { useAppTheme } from '@/context/ThemeContext';
 import { useTutorialTarget } from '@/context/TutorialContext';
-
-// Háttérárnyalatok hangulat szerint (1 = legrosszabb, 5 = legjobb).
-// A középső (semleges) érték megegyezik az alap háttérszínnel.
-const MOOD_BG_DARK = ['#030208', '#080614', '#0D0A1E', '#171040', '#241A5E'];
-const MOOD_BG_LIGHT = ['#C9B5E8', '#DFD2F4', '#F5F0FF', '#FAF7FF', '#FFFFFF'];
 
 type SheetKind = 'symptoms' | 'meal' | 'workout' | 'medication' | null;
 
@@ -68,7 +70,7 @@ const QUICK_ACTIONS: {
   tint: string;
 }[] = [
   {
-    label: 'Tünetek naplózása',
+    label: 'Tegnapi napló',
     Icon: Stethoscope,
     modal: 'symptoms',
     tint: 'rgba(124,58,237,0.9)',
@@ -93,27 +95,77 @@ const QUICK_ACTIONS: {
   },
 ];
 
+const HINT_VISIBLE_MS = 5000;
+const HINT_FADE_IN_MS = 260;
+const HINT_FADE_OUT_MS = 420;
+const HINT_LIFT_PX = 8;
+const HEADER_BTN_W = 36;
+const HEADER_BTN_GAP = 8;
+const HINT_TAIL_W = 14;
+// The restore button is the first of three in the header row, so its centre
+// sits two buttons plus two gaps in from the right edge.
+const HINT_TAIL_RIGHT =
+  2 * (HEADER_BTN_W + HEADER_BTN_GAP) + HEADER_BTN_W / 2 - HINT_TAIL_W / 2;
+
 export default function HomeScreen() {
   const p = usePalette();
   const insets = useSafeAreaInsets();
-  const { profile } = useProfile();
+  const { profile, updateProfile } = useProfile();
+  const { floraHint, hideFloraHint } = useFloraScene();
+  const hintOpacity = useSharedValue(0);
+  const hintLift = useSharedValue(-HINT_LIFT_PX);
+  const hintVisible = profile.floraHidden && floraHint;
+
+  // The node stays mounted for as long as the restore button exists, so the
+  // bubble can fade back out instead of being torn off the screen.
+  useEffect(() => {
+    if (!hintVisible) {
+      hintOpacity.value = withTiming(0, { duration: HINT_FADE_OUT_MS });
+      hintLift.value = withTiming(-HINT_LIFT_PX, {
+        duration: HINT_FADE_OUT_MS,
+      });
+      return;
+    }
+    hintOpacity.value = withTiming(1, { duration: HINT_FADE_IN_MS });
+    hintLift.value = withSpring(0, { damping: 14, stiffness: 190 });
+    const timer = setTimeout(hideFloraHint, HINT_VISIBLE_MS);
+    return () => clearTimeout(timer);
+  }, [hideFloraHint, hintLift, hintOpacity, hintVisible]);
+
+  const hintStyle = useAnimatedStyle(() => ({
+    opacity: hintOpacity.value,
+    transform: [{ translateY: hintLift.value }],
+  }));
   const { isDark, toggleTheme } = useAppTheme();
   const remission = profile.phase === 'remission';
 
-  const { log, setMoodForToday, toggleMedicationTaken } = useHealthLog();
+  const { log, setMoodForToday, takeMedicationDose } = useHealthLog();
   const todayIso = toIsoDate(new Date());
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayIso = toIsoDate(yesterday);
+  const yesterdayJournalDone = (log.symptoms[yesterdayIso] ?? []).some(
+    (entry) =>
+      entry.journalKind === 'yesterday' ||
+      entry.bowelMovements !== undefined ||
+      entry.medicationCompliance !== undefined,
+  );
   const mood = log.moods[todayIso] ?? null;
-  const nextMed = log.medications[0];
+  const nextMed = log.medications.find(
+    (medication) =>
+      medication.type !== 'biologic' && medication.times.length > 0,
+  );
+  const nextMedTime = nextMed?.times[0] ?? '08:00';
   const nextMedTaken = nextMed
-    ? (log.takenDoses?.[todayIso] ?? []).includes(nextMed.id)
+    ? (log.takenDoses?.[todayIso] ?? []).includes(
+        medicationDoseKey(nextMed.id, nextMedTime),
+      )
     : false;
   const [sheet, setSheet] = useState<SheetKind>(null);
-  const [chatOpen, setChatOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
 
-  const aiTargetRef = useTutorialTarget('home-ai');
-  const moodTargetRef = useTutorialTarget('home-mood');
-  const quickTargetRef = useTutorialTarget('home-quick');
+  const headerTargetRef = useTutorialTarget('dashboard-header');
+  const quickTargetRef = useTutorialTarget('quick-actions');
 
   const router = useRouter();
 
@@ -124,29 +176,13 @@ export default function HomeScreen() {
   if (!profile.heightCm.trim()) missingPersonal.push('magasság');
   const medsMissing =
     log.medications.length === 0 &&
-    !log.noMeds &&
-    profile.prescribedMeds.length === 0 &&
-    !profile.noPrescribedMeds;
+    !log.noMeds;
   const missingAll = medsMissing
     ? [...missingPersonal, 'gyógyszerek']
     : missingPersonal;
 
-  const moodAnim = useRef(new Animated.Value(3)).current;
-  useEffect(() => {
-    Animated.timing(moodAnim, {
-      toValue: mood ?? 3,
-      duration: 700,
-      useNativeDriver: false,
-    }).start();
-  }, [mood, moodAnim]);
-
-  const moodBg = moodAnim.interpolate({
-    inputRange: [1, 2, 3, 4, 5],
-    outputRange: p.dark ? MOOD_BG_DARK : MOOD_BG_LIGHT,
-  });
-
   return (
-    <Animated.View style={[styles.root, { backgroundColor: moodBg }]}>
+    <BackgroundWrapper variant="dashboard" style={styles.root}>
       <VitalityTree remission={remission} />
       <ScrollView
         style={styles.scroll}
@@ -156,7 +192,10 @@ export default function HomeScreen() {
           paddingBottom: 140,
         }}>
         {/* Fejléc */}
-        <View style={styles.headerRow}>
+        <View
+          ref={headerTargetRef}
+          collapsable={false}
+          style={styles.headerRow}>
           <Pressable
             onPress={() => setProfileOpen(true)}
             style={({ pressed }) => [
@@ -200,6 +239,29 @@ export default function HomeScreen() {
             </View>
           </Pressable>
           <View style={{ flexDirection: 'row', gap: 8 }}>
+            {profile.floraHidden ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Flóra visszahozása"
+                onPress={() => {
+                  hideFloraHint();
+                  updateProfile({ floraHidden: false });
+                }}
+                style={({ pressed }) => [
+                  styles.bellBtn,
+                  {
+                    backgroundColor: p.dark
+                      ? 'rgba(167,139,250,0.28)'
+                      : '#F5F3FF',
+                    borderColor: p.dark
+                      ? 'rgba(167,139,250,0.5)'
+                      : '#DDD6FE',
+                    opacity: pressed ? 0.7 : 1,
+                  },
+                ]}>
+                <Sparkles size={17} color={violet[400]} />
+              </Pressable>
+            ) : null}
             <Pressable
               onPress={toggleTheme}
               style={[
@@ -327,63 +389,8 @@ export default function HomeScreen() {
           </View>
         )}
 
-        {/* AI kártya */}
-        <View
-          ref={aiTargetRef}
-          collapsable={false}
-          style={{ paddingHorizontal: 20, marginBottom: 20 }}>
-          <Pressable
-            onPress={() => setChatOpen(true)}
-            style={({ pressed }) => pressed && { transform: [{ scale: 0.98 }] }}>
-            <LinearGradient
-              colors={[
-                'rgba(124,58,237,0.95)',
-                'rgba(109,40,217,0.8)',
-                'rgba(76,29,149,0.7)',
-              ]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={[
-                styles.aiCard,
-                { borderColor: 'rgba(167,139,250,0.55)' },
-              ]}>
-              <View style={{ flexDirection: 'row', gap: 12 }}>
-                <LinearGradient
-                  colors={[violet[400], violet[600]]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.aiIcon}>
-                  <Sparkles size={16} color="#fff" />
-                </LinearGradient>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.aiEyebrow}>AI elemzés · Ma</Text>
-                  <Text style={styles.aiBody}>
-                    {remission
-                      ? 'Az alvási és tüneti adataid alapján a mai nap remek egy könnyű sétához. A CRP-értéked csökkenő trendet mutat — szép munka! 💪'
-                      : 'Fellángolás mód aktív. Ma pihenést és kíméletes mozgást javaslok — hidratálj sokat, és kerüld a megerőltető edzést.'}
-                  </Text>
-                </View>
-              </View>
-              <View style={styles.aiCta}>
-                <Text
-                  style={{
-                    fontSize: 12,
-                    fontFamily: font.bodySemi,
-                    color: violet[300],
-                  }}>
-                  AI chat megnyitása
-                </Text>
-                <ChevronRight size={12} color={violet[300]} />
-              </View>
-            </LinearGradient>
-          </Pressable>
-        </View>
-
         {/* Hangulat */}
-        <View
-          ref={moodTargetRef}
-          collapsable={false}
-          style={{ paddingHorizontal: 20, marginBottom: 20 }}>
+        <View style={{ paddingHorizontal: 20, marginBottom: 20 }}>
           <Text style={[styles.sectionLabel, { color: p.muted }]}>
             Hogy érzed magad ma?
           </Text>
@@ -432,27 +439,33 @@ export default function HomeScreen() {
             Gyors műveletek
           </Text>
           <View style={styles.qaGrid}>
-            {QUICK_ACTIONS.map((qa) => (
-              <Pressable
-                key={qa.label}
-                onPress={() => setSheet(qa.modal)}
-                style={({ pressed }) => [
-                  styles.qaItem,
-                  pressed && { transform: [{ scale: 0.95 }] },
-                ]}>
-                <LinearGradient
-                  colors={[qa.tint, 'rgba(76,29,149,0.7)']}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={[
-                    styles.qaCard,
-                    { borderColor: 'rgba(167,139,250,0.5)' },
+            {QUICK_ACTIONS.map((qa) => {
+              const journalCompleted =
+                qa.modal === 'symptoms' && yesterdayJournalDone;
+              return (
+                <Pressable
+                  key={qa.modal}
+                  onPress={() => setSheet(qa.modal)}
+                  style={({ pressed }) => [
+                    styles.qaItem,
+                    pressed && { transform: [{ scale: 0.95 }] },
                   ]}>
-                  <qa.Icon size={22} color={violet[300]} />
-                  <Text style={styles.qaLabel}>{qa.label}</Text>
-                </LinearGradient>
-              </Pressable>
-            ))}
+                  <LinearGradient
+                    colors={[qa.tint, 'rgba(76,29,149,0.7)']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={[
+                      styles.qaCard,
+                      { borderColor: 'rgba(167,139,250,0.5)' },
+                    ]}>
+                    <qa.Icon size={22} color={violet[300]} />
+                    <Text style={styles.qaLabel}>
+                      {journalCompleted ? 'Napló szerkesztése' : qa.label}
+                    </Text>
+                  </LinearGradient>
+                </Pressable>
+              );
+            })}
           </View>
         </View>
 
@@ -530,11 +543,11 @@ export default function HomeScreen() {
                       fontFamily: font.body,
                       color: p.muted,
                     }}>
-                    Ma {nextMed.time} · {nextMed.times}
+                    Ma {nextMedTime} · {nextMed.times.length} időpont
                   </Text>
                 </View>
                 <Pressable
-                  onPress={() => toggleMedicationTaken(nextMed.id)}
+                  onPress={() => takeMedicationDose(nextMed.id, nextMedTime)}
                   style={({ pressed }) => [
                     styles.checkBtn,
                     nextMedTaken
@@ -560,6 +573,19 @@ export default function HomeScreen() {
         </View>
       </ScrollView>
 
+      {profile.floraHidden ? (
+        <Animated.View
+          pointerEvents="none"
+          style={[styles.hintWrap, { top: insets.top + 64 }, hintStyle]}>
+          <View style={styles.hintTail} />
+          <View style={styles.hintBody}>
+            <Text style={styles.hintText}>
+              Itt megtalálsz! Koppints, és visszajövök.
+            </Text>
+          </View>
+        </Animated.View>
+      ) : null}
+
       <SymptomSheet
         visible={sheet === 'symptoms'}
         onClose={() => setSheet(null)}
@@ -573,18 +599,13 @@ export default function HomeScreen() {
         visible={sheet === 'medication'}
         onClose={() => setSheet(null)}
       />
-      <AIChatModal
-        visible={chatOpen}
-        onClose={() => setChatOpen(false)}
-        remission={remission}
-      />
       {profileOpen ? (
         <ProfileModal
           visible
           onClose={() => setProfileOpen(false)}
         />
       ) : null}
-    </Animated.View>
+    </BackgroundWrapper>
   );
 }
 
@@ -636,6 +657,43 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  hintWrap: {
+    position: 'absolute',
+    right: 20,
+    alignItems: 'flex-end',
+    zIndex: 50,
+  },
+  hintTail: {
+    width: 0,
+    height: 0,
+    marginRight: HINT_TAIL_RIGHT,
+    borderLeftWidth: HINT_TAIL_W / 2,
+    borderRightWidth: HINT_TAIL_W / 2,
+    borderBottomWidth: 9,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    borderBottomColor: 'rgba(167, 139, 250, 0.55)',
+  },
+  hintBody: {
+    maxWidth: 232,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(167, 139, 250, 0.55)',
+    backgroundColor: 'rgba(24, 12, 46, 0.96)',
+    shadowColor: '#7C3AED',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.4,
+    shadowRadius: 14,
+    elevation: 10,
+  },
+  hintText: {
+    color: '#FFFFFF',
+    fontFamily: font.bodyMedium,
+    fontSize: 12.5,
+    lineHeight: 17,
+  },
   bellBtn: {
     width: 36,
     height: 36,
@@ -662,39 +720,6 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 999,
     borderWidth: 1,
-  },
-  aiCard: {
-    borderRadius: 24,
-    padding: 20,
-    borderWidth: 1,
-    overflow: 'hidden',
-  },
-  aiIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  aiEyebrow: {
-    fontSize: 10,
-    fontFamily: font.bodySemi,
-    textTransform: 'uppercase',
-    letterSpacing: 2,
-    color: 'rgba(255,255,255,0.5)',
-    marginBottom: 4,
-  },
-  aiBody: {
-    fontSize: 14,
-    lineHeight: 21,
-    fontFamily: font.bodyMedium,
-    color: '#fff',
-  },
-  aiCta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginTop: 12,
   },
   sectionLabel: {
     fontSize: 12,

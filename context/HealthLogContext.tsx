@@ -8,12 +8,25 @@ import React, {
   useState,
 } from 'react';
 
+export type FoodImpact = 'good' | 'bloated' | 'painful';
+
+export type FoodImpactEntry = {
+  mealId: string;
+  impact: FoodImpact;
+};
+
 export type SymptomEntry = {
   id: string;
   time: string; // "HH:MM"
   pain: number; // 0-10
   bristol: number | null; // 1-7
   blood: boolean;
+  bowelMovements?: number;
+  energy?: number; // 1-5
+  medicationCompliance?: 'yes' | 'partial' | 'no' | null;
+  medicationMissReason?: 'forgot' | 'left-home' | 'ran-out' | 'unknown' | null;
+  foodImpacts?: FoodImpactEntry[];
+  journalKind?: 'yesterday';
   note: string;
 };
 
@@ -27,6 +40,8 @@ export type MealEntry = {
   portion: Portion;
   mealType: MealType;
   calories: number;
+  impact?: FoodImpact;
+  tagged?: boolean;
 };
 
 export type AppointmentEntry = {
@@ -35,16 +50,23 @@ export type AppointmentEntry = {
   exam: string; // vizsgálat / szakterület
   date: string; // ISO dátum (YYYY-MM-DD)
   time: string; // "HH:MM"
+  allDay?: boolean;
+  medicationId?: string;
 };
 
 export type MedicationEntry = {
   id: string;
   name: string;
   dose: string;
-  time: string; // "HH:MM"
-  times: string; // pl. "1× naponta"
-  /** A profil „felírt gyógyszerek” listájából származik. */
-  fromProfile?: boolean;
+  type: 'pill' | 'supplement' | 'biologic';
+  times: string[];
+  inventoryRemaining: number;
+  refillThreshold: number;
+  since: string;
+  administrationLocation?: 'home' | 'hospital';
+  intervalMonths?: 1 | 2 | 3;
+  lastDoseDate?: string;
+  nextDoseDate?: string;
 };
 
 type HealthLog = {
@@ -71,31 +93,92 @@ const seedMedications: MedicationEntry[] = [
     id: 'med-1',
     name: 'Mesalamine',
     dose: '800mg',
-    time: '8:00',
-    times: '3× naponta',
+    type: 'pill',
+    times: ['08:00'],
+    inventoryRemaining: 4,
+    refillThreshold: 5,
+    since: '2024-01-15',
   },
   {
     id: 'med-2',
-    name: 'Azathioprine',
-    dose: '100mg',
-    time: '8:00',
-    times: '1× naponta',
+    name: 'Kreatin-monohidrát',
+    dose: '5g',
+    type: 'supplement',
+    times: ['08:00'],
+    inventoryRemaining: 30,
+    refillThreshold: 7,
+    since: '2026-05-01',
   },
   {
     id: 'med-3',
-    name: 'Probiotikum',
-    dose: '10Mrd CFU',
-    time: '21:00',
-    times: '1× naponta',
-  },
-  {
-    id: 'med-4',
-    name: 'D3-vitamin',
-    dose: '2000 NE',
-    time: '8:00',
-    times: '1× naponta',
+    name: 'Tejsavó izolátum',
+    dose: '30g',
+    type: 'supplement',
+    times: ['20:00'],
+    inventoryRemaining: 15,
+    refillThreshold: 5,
+    since: '2026-06-10',
   },
 ];
+
+function normalizeMedications(raw: unknown): MedicationEntry[] {
+  if (!Array.isArray(raw)) return seedMedications;
+  return raw.flatMap((value, index) => {
+    if (!value || typeof value !== 'object') return [];
+    const item = value as Record<string, unknown>;
+    const name = String(item.name ?? '').trim();
+    if (!name) return [];
+    const legacyTime = String(item.time ?? '08:00').padStart(5, '0');
+    const times = Array.isArray(item.times)
+      ? item.times.map(String).filter(Boolean)
+      : [legacyTime];
+    return [
+      {
+        id: String(item.id ?? `migrated-${index}-${Date.now()}`),
+        name,
+        dose: String(item.dose ?? '—'),
+        type:
+          item.type === 'supplement'
+            ? 'supplement'
+            : item.type === 'biologic'
+              ? 'biologic'
+              : 'pill',
+        times: times.length > 0 ? times : ['08:00'],
+        inventoryRemaining:
+          item.type === 'biologic'
+            ? 0
+            : Math.max(0, Number(item.inventoryRemaining ?? 30)),
+        refillThreshold:
+          item.type === 'biologic'
+            ? 0
+            : Math.max(1, Number(item.refillThreshold ?? 5)),
+        since: String(item.since ?? ''),
+        administrationLocation:
+          item.administrationLocation === 'hospital'
+            ? 'hospital'
+            : item.administrationLocation === 'home'
+              ? 'home'
+              : undefined,
+        intervalMonths:
+          item.intervalMonths === 1 ||
+          item.intervalMonths === 2 ||
+          item.intervalMonths === 3
+            ? item.intervalMonths
+            : undefined,
+        lastDoseDate: item.lastDoseDate
+          ? String(item.lastDoseDate)
+          : undefined,
+        nextDoseDate: item.nextDoseDate
+          ? String(item.nextDoseDate)
+          : undefined,
+      },
+    ];
+  });
+}
+
+export function medicationDoseKey(id: string, time: string): string {
+  return `${id}@${time}`;
+}
 
 const seedAppointments: AppointmentEntry[] = [
   {
@@ -138,23 +221,25 @@ type HealthLogContextValue = {
   addSymptomForToday: (
     entry: Omit<SymptomEntry, 'id' | 'time'>,
   ) => void;
+  addSymptomForDate: (
+    date: string,
+    entry: Omit<SymptomEntry, 'id' | 'time'>,
+  ) => void;
+  saveYesterdayJournalForDate: (
+    date: string,
+    entry: Omit<SymptomEntry, 'id' | 'time'>,
+  ) => void;
   addMealForToday: (entry: Omit<MealEntry, 'id' | 'time'>) => void;
   removeMeal: (date: string, id: string) => void;
   addAppointment: (entry: Omit<AppointmentEntry, 'id'>) => void;
   removeAppointment: (id: string) => void;
   addMedication: (entry: Omit<MedicationEntry, 'id'>) => void;
   removeMedication: (id: string) => void;
-  /** Mai adag bevétele / visszavonása. */
-  toggleMedicationTaken: (id: string) => void;
+  takeMedicationDose: (id: string, time: string) => void;
   /** „Nem szedek gyógyszert” jelző; bekapcsolva a gyógyszerlista is ürül. */
   setNoMeds: (value: boolean) => void;
   /** Onboarding után: üres gyógyszerlista + a noMeds jelző beállítása. */
   resetMedications: (noMeds: boolean) => void;
-  /** A profil felírt gyógyszereit szinkronizálja a bevételi listával. */
-  syncMedicationsFromProfile: (
-    entries: { name: string; since: string }[],
-    noMeds: boolean,
-  ) => void;
 };
 
 const HealthLogContext = createContext<HealthLogContextValue | null>(null);
@@ -179,7 +264,7 @@ export function HealthLogProvider({
             symptoms: parsed.symptoms ?? {},
             meals: parsed.meals ?? {},
             appointments: parsed.appointments ?? seedAppointments,
-            medications: parsed.medications ?? seedMedications,
+            medications: normalizeMedications(parsed.medications),
             noMeds: parsed.noMeds ?? false,
             takenDoses: parsed.takenDoses ?? {},
           });
@@ -214,10 +299,9 @@ export function HealthLogProvider({
     [update],
   );
 
-  const addSymptomForToday = useCallback(
-    (entry: Omit<SymptomEntry, 'id' | 'time'>) => {
+  const addSymptomForDate = useCallback(
+    (date: string, entry: Omit<SymptomEntry, 'id' | 'time'>) => {
       const now = new Date();
-      const today = toIsoDate(now);
       const full: SymptomEntry = {
         ...entry,
         id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -229,11 +313,72 @@ export function HealthLogProvider({
         ...prev,
         symptoms: {
           ...prev.symptoms,
-          [today]: [...(prev.symptoms[today] ?? []), full],
+          [date]: [...(prev.symptoms[date] ?? []), full],
         },
       }));
     },
     [update],
+  );
+
+  const saveYesterdayJournalForDate = useCallback(
+    (date: string, entry: Omit<SymptomEntry, 'id' | 'time'>) => {
+      const impacts = new Map(
+        (entry.foodImpacts ?? []).map(({ mealId, impact }) => [mealId, impact]),
+      );
+
+      update((prev) => {
+        const entries = prev.symptoms[date] ?? [];
+        const existingIndex = entries.findIndex(
+          (item) =>
+            item.journalKind === 'yesterday' ||
+            item.bowelMovements !== undefined ||
+            item.medicationCompliance !== undefined,
+        );
+        const now = new Date();
+        const existing =
+          existingIndex >= 0 ? entries[existingIndex] : undefined;
+        const full: SymptomEntry = existing
+          ? { ...existing, ...entry }
+          : {
+              ...entry,
+              id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+              time: `${String(now.getHours()).padStart(2, '0')}:${String(
+                now.getMinutes(),
+              ).padStart(2, '0')}`,
+            };
+        const nextEntries =
+          existingIndex >= 0
+            ? entries.map((item, index) =>
+                index === existingIndex ? full : item,
+              )
+            : [...entries, full];
+
+        return {
+          ...prev,
+          symptoms: {
+            ...prev.symptoms,
+            [date]: nextEntries,
+          },
+          meals: {
+            ...prev.meals,
+            [date]: (prev.meals[date] ?? []).map((meal) => {
+              const impact = impacts.get(meal.id);
+              return impact
+                ? { ...meal, impact, tagged: true }
+                : meal;
+            }),
+          },
+        };
+      });
+    },
+    [update],
+  );
+
+  const addSymptomForToday = useCallback(
+    (entry: Omit<SymptomEntry, 'id' | 'time'>) => {
+      addSymptomForDate(toIsoDate(new Date()), entry);
+    },
+    [addSymptomForDate],
   );
 
   const addMealForToday = useCallback(
@@ -301,9 +446,28 @@ export function HealthLogProvider({
         ...entry,
         id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       };
+      const biologicAppointment: AppointmentEntry | null =
+        full.type === 'biologic' && full.nextDoseDate
+          ? {
+              id: `biologic-${full.id}`,
+              doctor: full.name,
+              exam: `Biológiai terápia · ${
+                full.administrationLocation === 'hospital'
+                  ? 'Kórházban'
+                  : 'Otthon'
+              }`,
+              date: full.nextDoseDate,
+              time: '',
+              allDay: true,
+              medicationId: full.id,
+            }
+          : null;
       update((prev) => ({
         ...prev,
         medications: [...prev.medications, full],
+        appointments: biologicAppointment
+          ? [...prev.appointments, biologicAppointment]
+          : prev.appointments,
         noMeds: false,
       }));
     },
@@ -316,6 +480,9 @@ export function HealthLogProvider({
         ...prev,
         noMeds: value,
         medications: value ? [] : prev.medications,
+        appointments: value
+          ? prev.appointments.filter((appointment) => !appointment.medicationId)
+          : prev.appointments,
       }));
     },
     [update],
@@ -323,45 +490,14 @@ export function HealthLogProvider({
 
   const resetMedications = useCallback(
     (noMeds: boolean) => {
-      update((prev) => ({ ...prev, medications: [], noMeds }));
-    },
-    [update],
-  );
-
-  const syncMedicationsFromProfile = useCallback(
-    (entries: { name: string; since: string }[], noMeds: boolean) => {
-      update((prev) => {
-        if (noMeds) {
-          return { ...prev, noMeds: true, medications: [] };
-        }
-        const names = new Set(entries.map((e) => e.name.toLowerCase()));
-        const kept = prev.medications.filter(
-          (m) => !m.fromProfile && !names.has(m.name.toLowerCase()),
-        );
-        const fromProfile = entries.map((e, i) => {
-          const existing = prev.medications.find(
-            (m) => m.name.toLowerCase() === e.name.toLowerCase(),
-          );
-          if (existing) {
-            return existing.fromProfile
-              ? existing
-              : { ...existing, fromProfile: true as const };
-          }
-          return {
-            id: `profile-${e.name.toLowerCase()}-${i}`,
-            name: e.name,
-            dose: '—',
-            time: '8:00',
-            times: e.since ? `${e.since.slice(0, 7)}-től` : '1× naponta',
-            fromProfile: true,
-          };
-        });
-        return {
-          ...prev,
-          noMeds: false,
-          medications: [...fromProfile, ...kept],
-        };
-      });
+      update((prev) => ({
+        ...prev,
+        medications: [],
+        appointments: prev.appointments.filter(
+          (appointment) => !appointment.medicationId,
+        ),
+        noMeds,
+      }));
     },
     [update],
   );
@@ -371,22 +507,38 @@ export function HealthLogProvider({
       update((prev) => ({
         ...prev,
         medications: prev.medications.filter((m) => m.id !== id),
+        appointments: prev.appointments.filter(
+          (appointment) => appointment.medicationId !== id,
+        ),
       }));
     },
     [update],
   );
 
-  const toggleMedicationTaken = useCallback(
-    (id: string) => {
+  const takeMedicationDose = useCallback(
+    (id: string, time: string) => {
       const today = toIsoDate(new Date());
+      const key = medicationDoseKey(id, time);
       update((prev) => {
         const current = (prev.takenDoses ?? {})[today] ?? [];
-        const next = current.includes(id)
-          ? current.filter((x) => x !== id)
-          : [...current, id];
+        if (current.includes(key)) return prev;
         return {
           ...prev,
-          takenDoses: { ...(prev.takenDoses ?? {}), [today]: next },
+          medications: prev.medications.map((medication) =>
+            medication.id === id
+              ? {
+                  ...medication,
+                  inventoryRemaining: Math.max(
+                    0,
+                    medication.inventoryRemaining - 1,
+                  ),
+                }
+              : medication,
+          ),
+          takenDoses: {
+            ...(prev.takenDoses ?? {}),
+            [today]: [...current, key],
+          },
         };
       });
     },
@@ -399,32 +551,34 @@ export function HealthLogProvider({
       log,
       setMoodForToday,
       addSymptomForToday,
+      addSymptomForDate,
+      saveYesterdayJournalForDate,
       addMealForToday,
       removeMeal,
       addAppointment,
       removeAppointment,
       addMedication,
       removeMedication,
-      toggleMedicationTaken,
+      takeMedicationDose,
       setNoMeds,
       resetMedications,
-      syncMedicationsFromProfile,
     }),
     [
       ready,
       log,
       setMoodForToday,
       addSymptomForToday,
+      addSymptomForDate,
+      saveYesterdayJournalForDate,
       addMealForToday,
       removeMeal,
       addAppointment,
       removeAppointment,
       addMedication,
       removeMedication,
-      toggleMedicationTaken,
+      takeMedicationDose,
       setNoMeds,
       resetMedications,
-      syncMedicationsFromProfile,
     ],
   );
 

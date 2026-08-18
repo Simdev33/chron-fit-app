@@ -23,6 +23,8 @@ export type Profile = {
   loggedIn: boolean;
   /** Az első bejelentkezés utáni bemutató (tutorial) lefutott-e már. */
   tutorialDone: boolean;
+  /** A lebegő Flóra el van-e rejtve a képernyőről. */
+  floraHidden: boolean;
   email: string;
   name: string;
   diagnosis: Diagnosis;
@@ -53,6 +55,7 @@ const defaultProfile: Profile = {
   onboarded: false,
   loggedIn: false,
   tutorialDone: false,
+  floraHidden: false,
   email: '',
   name: 'Anna',
   diagnosis: 'crohn',

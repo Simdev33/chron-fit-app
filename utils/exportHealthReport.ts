@@ -311,8 +311,12 @@ export async function exportHealthReport(
         <tr>
           <td class="date">${esc(m.name)}</td>
           <td>${esc(m.dose)}</td>
-          <td>${esc(m.time)}</td>
-          <td>${esc(m.times)}</td>
+          <td>${esc(
+            m.type === 'biologic'
+              ? `${m.intervalMonths ?? 1} havonta`
+              : m.times.join(', '),
+          )}</td>
+          <td>${esc(m.since || '–')}</td>
         </tr>`,
     )
     .join('');
@@ -325,7 +329,7 @@ export async function exportHealthReport(
     .map(
       (a) => `
         <tr>
-          <td class="date">${hu(a.date, { year: 'numeric', month: 'short', day: 'numeric' })} ${esc(a.time)}</td>
+          <td class="date">${hu(a.date, { year: 'numeric', month: 'short', day: 'numeric' })} ${a.allDay ? 'egész nap' : esc(a.time)}</td>
           <td>${esc(a.doctor)}</td>
           <td>${esc(a.exam)}</td>
         </tr>`,
@@ -411,7 +415,7 @@ export async function exportHealthReport(
 
   <h2>Aktuális gyógyszerek és kiegészítők</h2>
   <table>
-    <thead><tr><th>Név</th><th style="width:100px">Adag</th><th style="width:80px">Időpont</th><th style="width:140px">Gyakoriság</th></tr></thead>
+    <thead><tr><th>Név</th><th style="width:100px">Adag</th><th style="width:110px">Időpontok</th><th style="width:110px">Mióta szedi</th></tr></thead>
     <tbody>${
       medRows ||
       `<tr><td colspan="4" class="muted">${

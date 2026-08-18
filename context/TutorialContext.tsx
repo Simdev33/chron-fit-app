@@ -12,49 +12,57 @@ import type { View } from 'react-native';
 import { useProfile } from './ProfileContext';
 
 export type TutorialStep = {
-  /** A kiemelendő célpont kulcsa; null esetén középre igazított kártya. */
-  target: string | null;
-  title: string;
+  step: number;
+  screen: 'Home' | 'Lifestyle' | 'Organizer' | 'Health';
+  targetId:
+    | 'dashboard-header'
+    | 'quick-actions'
+    | 'tab-lifestyle'
+    | 'tab-organizer'
+    | 'tab-health';
   text: string;
+  action: 'tap' | 'navigate' | 'finish';
 };
 
-export const TUTORIAL_STEPS: TutorialStep[] = [
+export const tutorialSteps: TutorialStep[] = [
   {
-    target: null,
-    title: 'Üdv a CrohnFit-ben! 👋',
-    text: 'Gyors körbevezetés következik: megmutatjuk, hol találod a legfontosabb funkciókat. Bármikor kihagyhatod — a lényeg, hogy otthon érezd magad.',
+    step: 1,
+    screen: 'Home',
+    targetId: 'dashboard-header',
+    text: 'Üdvözöllek a CrohnSync-ben! Én Flóra vagyok, a személyes asszisztensed. Engedd meg, hogy gyorsan körbevezesselek!',
+    action: 'tap',
   },
   {
-    target: 'home-mood',
-    title: 'Napi hangulat',
-    text: 'Minden nap jelöld be, hogy érzed magad. A főoldal háttere is ehhez igazodik, és az Egészség tab naptárában bármikor visszanézheted.',
+    step: 2,
+    screen: 'Home',
+    targetId: 'quick-actions',
+    text: 'Itt a Kezdőlapon találod a gyors gombokat. Bármikor egy kattintással rögzítheted a tüneteidet vagy az étkezésedet.',
+    action: 'tap',
   },
   {
-    target: 'home-quick',
-    title: 'Gyors műveletek',
-    text: 'Innen egyetlen koppintással rögzíthetsz tünetet, étkezést, edzést vagy bevett gyógyszert. Minél többet naplózol, annál többet mutatnak a riportok.',
+    step: 3,
+    screen: 'Lifestyle',
+    targetId: 'tab-lifestyle',
+    text: 'Lépjünk át az Életmód menübe! Itt tudod vezetni a részletes étrendedet és az edzéseidet, hogy lássuk, mi tesz jót a testednek.',
+    action: 'navigate',
   },
   {
-    target: 'home-ai',
-    title: 'AI asszisztens',
-    text: 'Naponta rövid összefoglalót kapsz az adataid alapján, és a kártyára koppintva bármit megkérdezhetsz az AI chattől.',
+    step: 4,
+    screen: 'Organizer',
+    targetId: 'tab-organizer',
+    text: 'Ez a Szervező. Ide rögzítjük a gyógyszereidet és a közelgő orvosi időpontokat (pl. vérvétel). Én pedig majd szólok, ha be kell venni valamit!',
+    action: 'navigate',
   },
   {
-    target: 'tab-lifestyle',
-    title: 'Életmód',
-    text: 'Étkezésnapló kalóriabecsléssel és kíméletes mozgásformák — minden, ami a mindennapi jóllétet segíti.',
-  },
-  {
-    target: 'tab-schedule',
-    title: 'Szervező',
-    text: 'A gyógyszereid és az orvosi időpontjaid egy helyen. Új gyógyszert és időpontot is itt tudsz felvenni.',
-  },
-  {
-    target: 'tab-medical',
-    title: 'Egészség',
-    text: 'Tünetnapló, naptár és laboreredmények. Innen exportálhatsz elegáns PDF riportot is, amit megmutathatsz az orvosodnak. Jó egészséget! 💜',
+    step: 5,
+    screen: 'Health',
+    targetId: 'tab-health',
+    text: 'Végül az Egészség menü. Itt találod az AI elemzéseidet a rögzített adatok alapján. Bármikor írhatsz nekem, ha tanácsra van szükséged. Vágjunk is bele!',
+    action: 'finish',
   },
 ];
+
+export const TUTORIAL_STEPS = tutorialSteps;
 
 export type TargetRect = {
   x: number;
@@ -66,8 +74,13 @@ export type TargetRect = {
 type TutorialContextValue = {
   active: boolean;
   stepIndex: number;
+  currentStep: TutorialStep;
+  targetRect: TargetRect | null;
+  transitioning: boolean;
   next: () => void;
   skip: () => void;
+  setTargetRect: (rect: TargetRect | null) => void;
+  setTransitioning: (value: boolean) => void;
   registerTarget: (key: string, node: View | null) => void;
   measureTarget: (key: string) => Promise<TargetRect | null>;
 };
@@ -78,6 +91,8 @@ export function TutorialProvider({ children }: { children: React.ReactNode }) {
   const { ready, profile, updateProfile } = useProfile();
   const [active, setActive] = useState(false);
   const [stepIndex, setStepIndex] = useState(0);
+  const [targetRect, setTargetRect] = useState<TargetRect | null>(null);
+  const [transitioning, setTransitioning] = useState(false);
   const targets = useRef(new Map<string, View>());
   const startedRef = useRef(false);
 
@@ -93,6 +108,8 @@ export function TutorialProvider({ children }: { children: React.ReactNode }) {
       startedRef.current = true;
       const t = setTimeout(() => {
         setStepIndex(0);
+        setTargetRect(null);
+        setTransitioning(true);
         setActive(true);
       }, 600);
       return () => clearTimeout(t);
@@ -101,18 +118,24 @@ export function TutorialProvider({ children }: { children: React.ReactNode }) {
 
   const finish = useCallback(() => {
     setActive(false);
+    setTargetRect(null);
+    setTransitioning(false);
     updateProfile({ tutorialDone: true });
   }, [updateProfile]);
 
   const next = useCallback(() => {
-    setStepIndex((idx) => {
-      if (idx + 1 >= TUTORIAL_STEPS.length) {
-        finish();
-        return idx;
-      }
-      return idx + 1;
-    });
-  }, [finish]);
+    const step = tutorialSteps[stepIndex];
+    if (
+      step.action === 'finish' ||
+      stepIndex + 1 >= tutorialSteps.length
+    ) {
+      finish();
+      return;
+    }
+    setTargetRect(null);
+    setTransitioning(true);
+    setStepIndex(stepIndex + 1);
+  }, [finish, stepIndex]);
 
   const registerTarget = useCallback((key: string, node: View | null) => {
     if (node) {
@@ -126,17 +149,46 @@ export function TutorialProvider({ children }: { children: React.ReactNode }) {
     (key: string) =>
       new Promise<TargetRect | null>((resolve) => {
         const node = targets.current.get(key);
-        if (!node || typeof node.measureInWindow !== 'function') {
+        if (!node) {
           resolve(null);
           return;
         }
-        node.measureInWindow((x, y, width, height) => {
-          if (!width && !height) {
-            resolve(null);
-          } else {
-            resolve({ x, y, width, height });
-          }
-        });
+
+        if (typeof node.measureInWindow === 'function') {
+          node.measureInWindow((x, y, width, height) => {
+            if (!width && !height) {
+              resolve(null);
+            } else {
+              resolve({ x, y, width, height });
+            }
+          });
+          return;
+        }
+
+        const webNode = node as unknown as {
+          getBoundingClientRect?: () => {
+            left: number;
+            top: number;
+            width: number;
+            height: number;
+          };
+        };
+        if (typeof webNode.getBoundingClientRect === 'function') {
+          const rect = webNode.getBoundingClientRect();
+          resolve(
+            rect.width || rect.height
+              ? {
+                  x: rect.left,
+                  y: rect.top,
+                  width: rect.width,
+                  height: rect.height,
+                }
+              : null,
+          );
+          return;
+        }
+
+        resolve(null);
       }),
     [],
   );
@@ -145,12 +197,26 @@ export function TutorialProvider({ children }: { children: React.ReactNode }) {
     () => ({
       active,
       stepIndex,
+      currentStep: tutorialSteps[stepIndex] ?? tutorialSteps[0],
+      targetRect,
+      transitioning,
       next,
       skip: finish,
+      setTargetRect,
+      setTransitioning,
       registerTarget,
       measureTarget,
     }),
-    [active, stepIndex, next, finish, registerTarget, measureTarget],
+    [
+      active,
+      stepIndex,
+      targetRect,
+      transitioning,
+      next,
+      finish,
+      registerTarget,
+      measureTarget,
+    ],
   );
 
   return (

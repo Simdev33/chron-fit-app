@@ -1,6 +1,6 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { Plus, Search, Trash2 } from 'lucide-react-native';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -10,10 +10,12 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { BackgroundWrapper } from '@/components/BackgroundWrapper';
 import { MealSheet, WorkoutSheet } from '@/components/figma/sheets';
 import { EmptyState, GlassCard, usePalette } from '@/components/figma/ui';
 import { font, violet } from '@/constants/figma';
 import { RECIPES } from '@/constants/figmaData';
+import { useFloraScene } from '@/context/FloraSceneContext';
 import {
   mealTypeEmoji,
   mealTypeLabels,
@@ -59,13 +61,18 @@ export default function LifestyleScreen() {
   const [tab, setTab] = useState<'diet' | 'fitness'>('diet');
   const [workoutOpen, setWorkoutOpen] = useState(false);
   const [mealOpen, setMealOpen] = useState(false);
+  const { setLifestylePane } = useFloraScene();
+
+  useEffect(() => {
+    setLifestylePane(tab);
+  }, [tab, setLifestylePane]);
   const { log, removeMeal } = useHealthLog();
   const todayIso = toIsoDate(new Date());
   const todayMeals = log.meals[todayIso] ?? [];
   const todayKcal = todayMeals.reduce((sum, m) => sum + (m.calories ?? 0), 0);
 
   return (
-    <View style={{ flex: 1, backgroundColor: p.bg }}>
+    <BackgroundWrapper variant="lifestyle">
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{
@@ -595,7 +602,7 @@ export default function LifestyleScreen() {
         onClose={() => setWorkoutOpen(false)}
       />
       <MealSheet visible={mealOpen} onClose={() => setMealOpen(false)} />
-    </View>
+    </BackgroundWrapper>
   );
 }
 

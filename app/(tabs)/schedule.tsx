@@ -1,10 +1,7 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import {
-  CheckCircle2,
   ChevronLeft,
   ChevronRight,
-  Circle,
-  Pill,
   Plus,
   Trash2,
   User,
@@ -19,25 +16,20 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { BackgroundWrapper } from '@/components/BackgroundWrapper';
 import { AddAppointmentSheet } from '@/components/figma/AddAppointmentSheet';
-import { AddMedicationSheet } from '@/components/figma/AddMedicationSheet';
 import { EmptyState, GlassCard, usePalette } from '@/components/figma/ui';
+import { MedicationTimeline } from '@/components/organizer/MedicationTimeline';
 import { font, fuchsia400, violet } from '@/constants/figma';
 import { WEEK } from '@/constants/figmaData';
-import { toIsoDate, useHealthLog } from '@/context/HealthLogContext';
-import { useProfile } from '@/context/ProfileContext';
+import { useHealthLog } from '@/context/HealthLogContext';
 
 export default function ScheduleScreen() {
   const p = usePalette();
   const insets = useSafeAreaInsets();
-  const { log, removeAppointment, removeMedication, setNoMeds, toggleMedicationTaken } =
-    useHealthLog();
-  const { updateProfile } = useProfile();
-  const taken = new Set(log.takenDoses?.[toIsoDate(new Date())] ?? []);
+  const { log, removeAppointment } = useHealthLog();
   const [selectedDate, setSelectedDate] = useState(13);
   const [addOpen, setAddOpen] = useState(false);
-  const [addMedOpen, setAddMedOpen] = useState(false);
-  const meds = log.medications;
 
   const appointments = useMemo(
     () =>
@@ -49,10 +41,8 @@ export default function ScheduleScreen() {
     [log.appointments],
   );
 
-  const toggle = (id: string) => toggleMedicationTaken(id);
-
   return (
-    <View style={{ flex: 1, backgroundColor: p.bg }}>
+    <BackgroundWrapper variant="organizer">
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{
@@ -154,180 +144,14 @@ export default function ScheduleScreen() {
           </GlassCard>
         </View>
 
-        {/* Napi gyógyszerek */}
+        {/* Gyógyszer- és étrendkiegészítő idővonal */}
         <View style={{ paddingHorizontal: 20, marginBottom: 24 }}>
           <View style={styles.sectionRow}>
             <Text style={[styles.sectionLabel, { color: p.muted }]}>
-              Napi gyógyszerek
+              Mai gyógyszerek és kiegészítők
             </Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-              {meds.length > 0 && (
-                <Text
-                  style={{
-                    fontSize: 12,
-                    fontFamily: font.bodySemi,
-                    color: violet[400],
-                  }}>
-                  {taken.size}/{meds.length} kész
-                </Text>
-              )}
-              <Pressable
-                onPress={() => setAddMedOpen(true)}
-                style={({ pressed }) => [
-                  styles.addChip,
-                  pressed && { transform: [{ scale: 0.95 }] },
-                ]}>
-                <LinearGradient
-                  colors={[violet[600], violet[700]]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={styles.addChipInner}>
-                  <Plus size={14} color="#fff" strokeWidth={2.5} />
-                  <Text
-                    style={{
-                      fontSize: 12,
-                      fontFamily: font.display,
-                      color: '#fff',
-                    }}>
-                    Új
-                  </Text>
-                </LinearGradient>
-              </Pressable>
-            </View>
           </View>
-          {meds.length === 0 && log.noMeds && (
-            <EmptyState
-              emoji="🙌"
-              title="Nem szedsz gyógyszert"
-              text="Ezt jelezted nekünk — így nem is fogjuk kérni a felvételüket. Ha ez változik, koppints az „Új” gombra, és a lista újra aktív lesz."
-            />
-          )}
-          {meds.length === 0 && !log.noMeds && (
-            <>
-              <EmptyState
-                emoji="💊"
-                title="Még nincs felvett gyógyszer"
-                text="Koppints az „Új” gombra, és add hozzá a gyógyszereidet vagy vitaminjaidat — mi számon tartjuk, mikor mi következik."
-              />
-              <Pressable
-                onPress={() => {
-                  setNoMeds(true);
-                  updateProfile({ noPrescribedMeds: true, prescribedMeds: [] });
-                }}
-                style={({ pressed }) => [
-                  { alignSelf: 'center', marginTop: 12, padding: 6 },
-                  pressed && { opacity: 0.6 },
-                ]}>
-                <Text
-                  style={{
-                    fontSize: 13,
-                    fontFamily: font.bodySemi,
-                    color: violet[400],
-                    textDecorationLine: 'underline',
-                  }}>
-                  Nem szedek gyógyszert
-                </Text>
-              </Pressable>
-            </>
-          )}
-          <View style={{ gap: 12 }}>
-            {meds.map((m) => {
-              const isTaken = taken.has(m.id);
-              return (
-                <GlassCard
-                  key={m.id}
-                  style={{ padding: 16, opacity: isTaken ? 0.6 : 1 }}>
-                  <View
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      gap: 12,
-                    }}>
-                    <View
-                      style={{
-                        width: 40,
-                        height: 40,
-                        borderRadius: 12,
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        backgroundColor: isTaken
-                          ? p.chipBg
-                          : 'rgba(139,92,246,0.2)',
-                      }}>
-                      <Pill
-                        size={18}
-                        color={
-                          isTaken
-                            ? p.dark
-                              ? 'rgba(255,255,255,0.3)'
-                              : '#E9D5FF'
-                            : violet[400]
-                        }
-                      />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text
-                        style={{
-                          fontFamily: font.display,
-                          fontSize: 14,
-                          color: isTaken
-                            ? p.dark
-                              ? 'rgba(255,255,255,0.3)'
-                              : '#D8B4FE'
-                            : p.text,
-                          textDecorationLine: isTaken ? 'line-through' : 'none',
-                        }}>
-                        {m.name}
-                      </Text>
-                      <Text
-                        style={{
-                          fontSize: 12,
-                          fontFamily: font.body,
-                          color: p.muted,
-                        }}>
-                        {m.dose} · {m.time} · {m.times}
-                      </Text>
-                    </View>
-                    <Pressable
-                      onPress={() => removeMedication(m.id)}
-                      hitSlop={8}
-                      style={({ pressed }) => [
-                        styles.deleteBtn,
-                        {
-                          backgroundColor: p.dark
-                            ? 'rgba(248,113,113,0.15)'
-                            : 'rgba(248,113,113,0.12)',
-                        },
-                        pressed && { transform: [{ scale: 0.9 }] },
-                      ]}>
-                      <Trash2 size={14} color="#F87171" />
-                    </Pressable>
-                    <Pressable
-                      onPress={() => toggle(m.id)}
-                      style={({ pressed }) => [
-                        styles.takeBtn,
-                        isTaken
-                          ? { backgroundColor: violet[600] }
-                          : {
-                              backgroundColor: p.chipBg,
-                              borderWidth: 1,
-                              borderColor: p.dark
-                                ? 'rgba(255,255,255,0.15)'
-                                : '#E9D5FF',
-                            },
-                        pressed && { transform: [{ scale: 0.9 }] },
-                      ]}>
-                      {isTaken ? (
-                        <CheckCircle2 size={18} color="#fff" />
-                      ) : (
-                        <Circle size={18} color={p.muted} />
-                      )}
-                    </Pressable>
-                  </View>
-                </GlassCard>
-              );
-            })}
-          </View>
+          <MedicationTimeline />
         </View>
 
         {/* Közelgő időpontok */}
@@ -422,7 +246,7 @@ export default function ScheduleScreen() {
                           fontFamily: font.body,
                           color: p.muted,
                         }}>
-                        {a.time}
+                        {a.allDay ? 'Egész nap' : a.time}
                       </Text>
                     </View>
                     <Pressable
@@ -451,11 +275,7 @@ export default function ScheduleScreen() {
         visible={addOpen}
         onClose={() => setAddOpen(false)}
       />
-      <AddMedicationSheet
-        visible={addMedOpen}
-        onClose={() => setAddMedOpen(false)}
-      />
-    </View>
+    </BackgroundWrapper>
   );
 }
 
@@ -505,13 +325,6 @@ const styles = StyleSheet.create({
     width: 30,
     height: 30,
     borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  takeBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
   },

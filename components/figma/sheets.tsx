@@ -5,18 +5,27 @@ import {
   CheckCircle2,
   Circle as CircleIcon,
   Clock,
+  Minus,
   Pill,
+  Plus,
   Zap,
 } from 'lucide-react-native';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Pressable,
   ScrollView,
+  type StyleProp,
   StyleSheet,
   Text,
   TextInput,
   View,
+  type ViewStyle,
 } from 'react-native';
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+} from 'react-native-reanimated';
 import Svg, { Circle } from 'react-native-svg';
 
 import {
@@ -35,8 +44,11 @@ import {
 import {
   estimateCalories,
   mealTypeLabels,
+  medicationDoseKey,
   toIsoDate,
   useHealthLog,
+  type FoodImpact,
+  type FoodImpactEntry,
   type MealType,
 } from '@/context/HealthLogContext';
 import { useProfile } from '@/context/ProfileContext';
@@ -99,18 +111,128 @@ function FieldLabel({ children }: { children: React.ReactNode }) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Tünetek naplózása                                                   */
+/* Tegnapi napló                                                       */
 /* ------------------------------------------------------------------ */
 
 const BRISTOL = [
-  { n: 1, label: 'Kemény rögök' },
+  { n: 1, label: 'Kemény' },
   { n: 2, label: 'Csomós' },
   { n: 3, label: 'Repedezett' },
   { n: 4, label: 'Sima' },
-  { n: 5, label: 'Puha darabok' },
+  { n: 5, label: 'Puha' },
   { n: 6, label: 'Pépes' },
   { n: 7, label: 'Folyékony' },
 ];
+
+const ENERGY_LEVELS = ['😫', '😔', '😐', '🙂', '🤩'] as const;
+
+const FOOD_IMPACT_OPTIONS: {
+  id: FoodImpact;
+  emoji: string;
+  label: string;
+  color: string;
+  backgroundColor: string;
+}[] = [
+  {
+    id: 'good',
+    emoji: '🟢',
+    label: 'Jól esett',
+    color: '#34D399',
+    backgroundColor: 'rgba(52,211,153,0.13)',
+  },
+  {
+    id: 'bloated',
+    emoji: '🟡',
+    label: 'Puffasztott',
+    color: '#FACC15',
+    backgroundColor: 'rgba(250,204,21,0.13)',
+  },
+  {
+    id: 'painful',
+    emoji: '🔴',
+    label: 'Fájdalmat okozott',
+    color: '#FB7185',
+    backgroundColor: 'rgba(251,113,133,0.13)',
+  },
+];
+
+type MedicationCompliance = 'yes' | 'partial' | 'no';
+type MedicationMissReason = 'forgot' | 'left-home' | 'ran-out' | 'unknown';
+
+const MEDICATION_MISS_REASONS: {
+  id: MedicationMissReason;
+  label: string;
+}[] = [
+  { id: 'forgot', label: 'Elfelejtettem' },
+  { id: 'left-home', label: 'Otthon hagytam' },
+  { id: 'ran-out', label: 'Elfogyott' },
+  { id: 'unknown', label: 'Nem tudom' },
+];
+
+type YesterdayJournal = {
+  pain: number;
+  bowelMovements: number;
+  bristol: number | null;
+  blood: boolean;
+  energy: number;
+  medicationCompliance: MedicationCompliance | null;
+  medicationMissReason: MedicationMissReason | null;
+  foodImpacts: FoodImpactEntry[];
+  note: string;
+};
+
+const INITIAL_JOURNAL: YesterdayJournal = {
+  pain: 0,
+  bowelMovements: 1,
+  bristol: null,
+  blood: false,
+  energy: 3,
+  medicationCompliance: null,
+  medicationMissReason: null,
+  foodImpacts: [],
+  note: '',
+};
+
+function AnimatedChoice({
+  active,
+  onPress,
+  style,
+  containerStyle,
+  accessibilityLabel,
+  children,
+}: {
+  active: boolean;
+  onPress: () => void;
+  style: StyleProp<ViewStyle>;
+  containerStyle?: StyleProp<ViewStyle>;
+  accessibilityLabel: string;
+  children: React.ReactNode;
+}) {
+  const scale = useSharedValue(1);
+
+  useEffect(() => {
+    scale.value = withSpring(active ? 1.06 : 1, {
+      damping: 15,
+      stiffness: 240,
+      mass: 0.5,
+    });
+  }, [active, scale]);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  return (
+    <Pressable
+      accessibilityRole="radio"
+      accessibilityState={{ selected: active }}
+      accessibilityLabel={accessibilityLabel}
+      onPress={onPress}
+      style={containerStyle}>
+      <Animated.View style={[style, animatedStyle]}>{children}</Animated.View>
+    </Pressable>
+  );
+}
 
 export function SymptomSheet({
   visible,
@@ -120,36 +242,125 @@ export function SymptomSheet({
   onClose: () => void;
 }) {
   const p = usePalette();
-  const { addSymptomForToday } = useHealthLog();
-  const [pain, setPain] = useState(3);
-  const [bristol, setBristol] = useState<number | null>(null);
-  const [blood, setBlood] = useState(false);
-  const [note, setNote] = useState('');
+  const { log, saveYesterdayJournalForDate } = useHealthLog();
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayIso = toIsoDate(yesterday);
+  const yesterdayMeals = log.meals[yesterdayIso];
+  const mealEntries = yesterdayMeals ?? [];
+  const existingJournal = (log.symptoms[yesterdayIso] ?? []).find(
+    (entry) =>
+      entry.journalKind === 'yesterday' ||
+      entry.bowelMovements !== undefined ||
+      entry.medicationCompliance !== undefined,
+  );
+  const [journal, setJournal] = useState<YesterdayJournal>(INITIAL_JOURNAL);
+
+  useEffect(() => {
+    if (!visible) return;
+
+    const savedImpacts =
+      existingJournal?.foodImpacts ??
+      (yesterdayMeals ?? []).flatMap((meal): FoodImpactEntry[] =>
+        meal.impact ? [{ mealId: meal.id, impact: meal.impact }] : [],
+      );
+
+    setJournal(
+      existingJournal
+        ? {
+            pain: existingJournal.pain,
+            bowelMovements: existingJournal.bowelMovements ?? 1,
+            bristol: existingJournal.bristol,
+            blood: existingJournal.blood,
+            energy: existingJournal.energy ?? 3,
+            medicationCompliance:
+              existingJournal.medicationCompliance ?? null,
+            medicationMissReason:
+              existingJournal.medicationMissReason ?? null,
+            foodImpacts: savedImpacts,
+            note: existingJournal.note,
+          }
+        : { ...INITIAL_JOURNAL, foodImpacts: savedImpacts },
+    );
+  }, [existingJournal, visible, yesterdayMeals]);
+
+  function updateJournal<K extends keyof YesterdayJournal>(
+    key: K,
+    value: YesterdayJournal[K],
+  ) {
+    setJournal((current) => ({ ...current, [key]: value }));
+  }
+
+  function setFoodImpact(mealId: string, impact: FoodImpact) {
+    setJournal((current) => ({
+      ...current,
+      foodImpacts: [
+        ...current.foodImpacts.filter((item) => item.mealId !== mealId),
+        { mealId, impact },
+      ],
+    }));
+  }
 
   const save = () => {
-    addSymptomForToday({ pain, bristol, blood, note: note.trim() });
-    setPain(3);
-    setBristol(null);
-    setBlood(false);
-    setNote('');
+    saveYesterdayJournalForDate(yesterdayIso, {
+      pain: journal.pain,
+      bowelMovements: journal.bowelMovements,
+      bristol: journal.bristol,
+      blood: journal.blood,
+      energy: journal.energy,
+      medicationCompliance: journal.medicationCompliance,
+      medicationMissReason: journal.medicationMissReason,
+      foodImpacts: journal.foodImpacts,
+      journalKind: 'yesterday',
+      note: journal.note.trim(),
+    });
+    setJournal(INITIAL_JOURNAL);
     onClose();
   };
 
   return (
-    <BottomSheet visible={visible} onClose={onClose} title="Tünetek naplózása">
+    <BottomSheet visible={visible} onClose={onClose} title="Tegnapi napló">
       <ScrollView
         contentContainerStyle={styles.sheetBody}
-        keyboardShouldPersistTaps="handled">
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}>
+        {existingJournal ? (
+          <View
+            style={[
+              styles.journalCompletedBanner,
+              {
+                backgroundColor: p.dark
+                  ? 'rgba(52,211,153,0.1)'
+                  : 'rgba(16,185,129,0.08)',
+                borderColor: p.dark
+                  ? 'rgba(52,211,153,0.35)'
+                  : 'rgba(5,150,105,0.28)',
+              },
+            ]}>
+            <CheckCircle2 size={20} color={emerald400} />
+            <View style={{ flex: 1 }}>
+              <Text
+                style={[styles.journalCompletedTitle, { color: p.text }]}>
+                Ezt a naplót már kitöltötted
+              </Text>
+              <Text
+                style={[styles.journalCompletedText, { color: p.muted }]}>
+                Az alábbi adatokat bármikor módosíthatod.
+              </Text>
+            </View>
+          </View>
+        ) : null}
+
         <View>
           <View style={styles.rowBetween}>
-            <FieldLabel>Fájdalomszint</FieldLabel>
+            <FieldLabel>Tegnapi átlagos hasi fájdalom</FieldLabel>
             <Text
               style={{
                 fontFamily: font.displayX,
                 fontSize: 24,
                 color: violet[400],
               }}>
-              {pain}
+              {journal.pain}
               <Text
                 style={{
                   fontFamily: font.body,
@@ -164,42 +375,98 @@ export function SymptomSheet({
             minimumValue={0}
             maximumValue={10}
             step={1}
-            value={pain}
-            onValueChange={setPain}
+            value={journal.pain}
+            onValueChange={(value) => updateJournal('pain', value)}
             minimumTrackTintColor={violet[500]}
             maximumTrackTintColor={p.toggleOff}
             thumbTintColor={violet[500]}
           />
           <View style={styles.rowBetween}>
-            <Text style={[styles.sliderTick, { color: p.muted }]}>Nincs</Text>
+            <Text style={[styles.sliderTick, { color: p.muted }]}>Nincs · 0</Text>
             <Text style={[styles.sliderTick, { color: p.muted }]}>
-              Közepes
+              Közepes · 5
             </Text>
-            <Text style={[styles.sliderTick, { color: p.muted }]}>Súlyos</Text>
+            <Text style={[styles.sliderTick, { color: p.muted }]}>
+              Súlyos · 10
+            </Text>
+          </View>
+        </View>
+
+        <View>
+          <FieldLabel>Székletürítések száma tegnap</FieldLabel>
+          <View
+            style={[
+              styles.counter,
+              { backgroundColor: p.fieldBg, borderColor: p.fieldBorder },
+            ]}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Székletürítések számának csökkentése"
+              disabled={journal.bowelMovements === 0}
+              onPress={() =>
+                updateJournal(
+                  'bowelMovements',
+                  Math.max(0, journal.bowelMovements - 1),
+                )
+              }
+              style={({ pressed }) => [
+                styles.counterButton,
+                { backgroundColor: p.fieldBgStrong, borderColor: p.fieldBorder },
+                journal.bowelMovements === 0 && { opacity: 0.35 },
+                pressed && { transform: [{ scale: 0.92 }] },
+              ]}>
+              <Minus size={22} color={violet[300]} />
+            </Pressable>
+            <View style={styles.counterValueWrap}>
+              <Text style={[styles.counterValue, { color: p.text }]}>
+                {journal.bowelMovements}
+              </Text>
+              <Text style={[styles.counterUnit, { color: p.muted }]}>
+                alkalom
+              </Text>
+            </View>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Székletürítések számának növelése"
+              onPress={() =>
+                updateJournal(
+                  'bowelMovements',
+                  Math.min(30, journal.bowelMovements + 1),
+                )
+              }
+              style={({ pressed }) => [
+                styles.counterButton,
+                styles.counterButtonActive,
+                pressed && { transform: [{ scale: 0.92 }] },
+              ]}>
+              <Plus size={22} color="#fff" />
+            </Pressable>
           </View>
         </View>
 
         <View>
           <FieldLabel>Bristol széklet skála</FieldLabel>
-          <View style={{ flexDirection: 'row', gap: 4 }}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.bristolRow}>
             {BRISTOL.map((b) => {
-              const active = bristol === b.n;
+              const active = journal.bristol === b.n;
               return (
-                <Pressable
+                <AnimatedChoice
                   key={b.n}
-                  onPress={() => setBristol(b.n)}
-                  style={{
-                    flex: 1,
-                    alignItems: 'center',
-                    paddingVertical: 10,
-                    paddingHorizontal: 2,
-                    borderRadius: 12,
-                    backgroundColor: active
-                      ? violet[600]
-                      : p.fieldBgStrong,
-                    borderWidth: active ? 0 : 1,
-                    borderColor: p.fieldBorder,
-                  }}>
+                  active={active}
+                  accessibilityLabel={`${b.n}. típus, ${b.label}`}
+                  onPress={() => updateJournal('bristol', b.n)}
+                  style={[
+                    styles.bristolButton,
+                    {
+                      backgroundColor: active
+                        ? violet[600]
+                        : p.fieldBgStrong,
+                      borderColor: active ? violet[400] : p.fieldBorder,
+                    },
+                  ]}>
                   <Text
                     style={{
                       fontFamily: font.display,
@@ -218,11 +485,11 @@ export function SymptomSheet({
                     }}>
                     {b.label.split(' ')[0]}
                   </Text>
-                </Pressable>
+                </AnimatedChoice>
               );
             })}
-          </View>
-          {bristol ? (
+          </ScrollView>
+          {journal.bristol ? (
             <Text
               style={{
                 fontSize: 12,
@@ -230,7 +497,7 @@ export function SymptomSheet({
                 fontFamily: font.body,
                 color: p.muted,
               }}>
-              {bristol}. típus: {BRISTOL[bristol - 1].label}
+              {journal.bristol}. típus: {BRISTOL[journal.bristol - 1].label}
             </Text>
           ) : null}
         </View>
@@ -250,17 +517,254 @@ export function SymptomSheet({
               Végbélvérzés vagy vér a székletben
             </Text>
           </View>
-          <TogglePill value={blood} onChange={setBlood} onColor={red500} />
+          <TogglePill
+            value={journal.blood}
+            onChange={(value) => updateJournal('blood', value)}
+            onColor={red500}
+          />
+        </View>
+
+        <View>
+          <FieldLabel>Tegnapi energiaszint</FieldLabel>
+          <View
+            accessibilityRole="radiogroup"
+            style={styles.energyRow}>
+            {ENERGY_LEVELS.map((emoji, index) => {
+              const value = index + 1;
+              const active = journal.energy === value;
+              return (
+                <AnimatedChoice
+                  key={emoji}
+                  active={active}
+                  accessibilityLabel={`${value}. energiaszint`}
+                  onPress={() => updateJournal('energy', value)}
+                  containerStyle={styles.energyChoice}
+                  style={[
+                    styles.energyButton,
+                    {
+                      backgroundColor: active
+                        ? 'rgba(124,58,237,0.32)'
+                        : p.fieldBg,
+                      borderColor: active ? violet[400] : p.fieldBorder,
+                    },
+                    active && styles.energyButtonActive,
+                  ]}>
+                  <Text style={styles.energyEmoji}>{emoji}</Text>
+                </AnimatedChoice>
+              );
+            })}
+          </View>
+        </View>
+
+        <View>
+          <FieldLabel>Ételek hatása</FieldLabel>
+          <Text style={[styles.foodImpactHint, { color: p.muted }]}>
+            Flóra már figyeli, mely ételek okozhatnak kellemetlenséget – jelöld
+            meg, hogy tegnap melyik hogy esett!
+          </Text>
+
+          <View style={styles.foodImpactLegend}>
+            {FOOD_IMPACT_OPTIONS.map((option) => (
+              <Text
+                key={option.id}
+                style={[styles.foodImpactLegendText, { color: p.muted }]}>
+                {option.emoji} {option.label}
+              </Text>
+            ))}
+          </View>
+
+          {mealEntries.length > 0 ? (
+            <View
+              accessibilityRole="radiogroup"
+              style={styles.foodImpactList}>
+              {mealEntries.map((meal) => {
+                const selectedImpact = journal.foodImpacts.find(
+                  (item) => item.mealId === meal.id,
+                )?.impact;
+
+                return (
+                  <View
+                    key={meal.id}
+                    style={[
+                      styles.foodImpactCard,
+                      {
+                        backgroundColor: p.fieldBg,
+                        borderColor: p.fieldBorder,
+                      },
+                    ]}>
+                    <View style={styles.foodImpactMeal}>
+                      <Text
+                        numberOfLines={1}
+                        style={[styles.foodImpactMealName, { color: p.text }]}>
+                        {meal.name}
+                      </Text>
+                      <View style={styles.foodImpactTime}>
+                        <Clock size={12} color={p.muted} />
+                        <Text
+                          style={[
+                            styles.foodImpactTimeText,
+                            { color: p.muted },
+                          ]}>
+                          {meal.time}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.foodImpactChoices}>
+                      {FOOD_IMPACT_OPTIONS.map((option) => {
+                        const active = selectedImpact === option.id;
+                        return (
+                          <AnimatedChoice
+                            key={option.id}
+                            active={active}
+                            accessibilityLabel={`${meal.name}: ${option.label}`}
+                            onPress={() => setFoodImpact(meal.id, option.id)}
+                            style={[
+                              styles.foodImpactButton,
+                              {
+                                backgroundColor: active
+                                  ? option.backgroundColor
+                                  : p.fieldBgStrong,
+                                borderColor: active
+                                  ? option.color
+                                  : p.fieldBorder,
+                              },
+                              active && {
+                                shadowColor: option.color,
+                                shadowOpacity: 0.35,
+                                shadowRadius: 9,
+                                shadowOffset: { width: 0, height: 0 },
+                                elevation: 5,
+                              },
+                            ]}>
+                            <Text style={styles.foodImpactEmoji}>
+                              {option.emoji}
+                            </Text>
+                          </AnimatedChoice>
+                        );
+                      })}
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          ) : (
+            <View
+              style={[
+                styles.foodImpactEmpty,
+                {
+                  backgroundColor: p.fieldBg,
+                  borderColor: p.fieldBorder,
+                },
+              ]}>
+              <Text style={styles.foodImpactEmptyEmoji}>🍽️</Text>
+              <Text style={[styles.foodImpactEmptyText, { color: p.muted }]}>
+                Tegnap nem rögzítettél étkezést.
+              </Text>
+            </View>
+          )}
+        </View>
+
+        <View>
+          <FieldLabel>Bevetted tegnap az összes gyógyszeredet?</FieldLabel>
+          <View
+            accessibilityRole="radiogroup"
+            style={[
+              styles.complianceGroup,
+              { backgroundColor: p.fieldBg, borderColor: p.fieldBorder },
+            ]}>
+            {[
+              { id: 'yes', label: 'Igen' },
+              { id: 'partial', label: 'Részben' },
+              { id: 'no', label: 'Nem' },
+            ].map((option) => {
+              const id = option.id as MedicationCompliance;
+              const active = journal.medicationCompliance === id;
+              return (
+                <AnimatedChoice
+                  key={id}
+                  active={active}
+                  accessibilityLabel={option.label}
+                  onPress={() => {
+                    setJournal((current) => ({
+                      ...current,
+                      medicationCompliance: id,
+                      medicationMissReason:
+                        id === 'yes' ? null : current.medicationMissReason,
+                    }));
+                  }}
+                  containerStyle={styles.complianceChoice}
+                  style={[
+                    styles.complianceButton,
+                    {
+                      backgroundColor: active
+                        ? violet[600]
+                        : 'transparent',
+                    },
+                  ]}>
+                  <Text
+                    style={[
+                      styles.complianceLabel,
+                      { color: active ? '#fff' : p.muted },
+                    ]}>
+                    {option.label}
+                  </Text>
+                </AnimatedChoice>
+              );
+            })}
+          </View>
+
+          {journal.medicationCompliance === 'partial' ||
+          journal.medicationCompliance === 'no' ? (
+            <View style={styles.missReasonSection}>
+              <Text style={[styles.missReasonLabel, { color: p.muted }]}>
+                Miért maradt ki?
+              </Text>
+              <View style={styles.missReasonGroup}>
+                {MEDICATION_MISS_REASONS.map((reason) => {
+                  const active = journal.medicationMissReason === reason.id;
+                  return (
+                    <AnimatedChoice
+                      key={reason.id}
+                      active={active}
+                      accessibilityLabel={reason.label}
+                      onPress={() =>
+                        updateJournal('medicationMissReason', reason.id)
+                      }
+                      style={[
+                        styles.missReasonButton,
+                        {
+                          backgroundColor: active
+                            ? 'rgba(124,58,237,0.24)'
+                            : p.fieldBg,
+                          borderColor: active
+                            ? violet[400]
+                            : p.fieldBorder,
+                        },
+                      ]}>
+                      <Text
+                        style={[
+                          styles.missReasonText,
+                          { color: active ? violet[300] : p.muted },
+                        ]}>
+                        {reason.label}
+                      </Text>
+                    </AnimatedChoice>
+                  );
+                })}
+              </View>
+            </View>
+          ) : null}
         </View>
 
         <View>
           <FieldLabel>Megjegyzés (opcionális)</FieldLabel>
           <TextInput
             multiline
-            numberOfLines={3}
-            value={note}
-            onChangeText={setNote}
-            placeholder="További megjegyzések…"
+            numberOfLines={4}
+            value={journal.note}
+            onChangeText={(value) => updateJournal('note', value)}
+            placeholder="Írj le bármit, ami fontos lehetett tegnap…"
             placeholderTextColor={p.placeholder}
             style={[
               styles.textarea,
@@ -273,7 +777,17 @@ export function SymptomSheet({
           />
         </View>
 
-        <SaveButton label="Napló mentése" onPress={save} />
+        <SaveButton
+          label={
+            existingJournal ? 'Módosítások mentése' : 'Naplózás mentése'
+          }
+          onPress={save}
+          disabled={
+            (journal.medicationCompliance === 'partial' ||
+              journal.medicationCompliance === 'no') &&
+            !journal.medicationMissReason
+          }
+        />
       </ScrollView>
     </BottomSheet>
   );
@@ -795,18 +1309,19 @@ export function MedicationSheet({
   onClose: () => void;
 }) {
   const p = usePalette();
-  const { log, setNoMeds, toggleMedicationTaken } = useHealthLog();
+  const { log, setNoMeds, takeMedicationDose } = useHealthLog();
   const { updateProfile } = useProfile();
-  const meds = log.medications;
+  const meds = log.medications.filter(
+    (medication) =>
+      medication.type !== 'biologic' && medication.times.length > 0,
+  );
   const taken = new Set(log.takenDoses?.[toIsoDate(new Date())] ?? []);
   const [sideEffect, setSideEffect] = useState(false);
   const [sideEffectText, setSideEffectText] = useState('');
   const [missReason, setMissReason] = useState<string | null>(null);
 
-  const toggle = (id: string) => toggleMedicationTaken(id);
-
-  const dueNow = meds.filter((m) => m.time === '8:00');
-  const dueLater = meds.filter((m) => m.time !== '8:00');
+  const dueNow = meds.filter((m) => m.times.includes('08:00'));
+  const dueLater = meds.filter((m) => !m.times.includes('08:00'));
   const progress =
     meds.length > 0 ? (taken.size / meds.length) * 138 : 0;
 
@@ -939,11 +1454,14 @@ export function MedicationSheet({
             </Text>
             <View style={{ gap: 8 }}>
               {group.list.map((m) => {
-                const isTaken = taken.has(m.id);
+                const doseTime = group.later
+                  ? (m.times[0] ?? '20:00')
+                  : '08:00';
+                const isTaken = taken.has(medicationDoseKey(m.id, doseTime));
                 return (
                   <Pressable
                     key={m.id}
-                    onPress={() => toggle(m.id)}
+                    onPress={() => takeMedicationDose(m.id, doseTime)}
                     style={{
                       flexDirection: 'row',
                       alignItems: 'center',
@@ -1013,7 +1531,7 @@ export function MedicationSheet({
                           fontFamily: font.body,
                           color: p.muted,
                         }}>
-                        {m.dose} · {group.later ? m.time : m.times}
+                        {m.dose} · {m.times.join(', ')}
                       </Text>
                     </View>
                     <View
@@ -1135,6 +1653,25 @@ const styles = StyleSheet.create({
     paddingBottom: 32,
     gap: 24,
   },
+  journalCompletedBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 11,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+  journalCompletedTitle: {
+    fontFamily: font.display,
+    fontSize: 13,
+  },
+  journalCompletedText: {
+    fontFamily: font.body,
+    fontSize: 11,
+    lineHeight: 16,
+    marginTop: 2,
+  },
   kcalRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1161,6 +1698,208 @@ const styles = StyleSheet.create({
   sliderTick: {
     fontSize: 10,
     fontFamily: font.body,
+  },
+  counter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 10,
+    borderRadius: 18,
+    borderWidth: 1,
+  },
+  counterButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 15,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  counterButtonActive: {
+    borderColor: violet[500],
+    backgroundColor: violet[600],
+    shadowColor: violet[500],
+    shadowOpacity: 0.45,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 6,
+  },
+  counterValueWrap: {
+    alignItems: 'center',
+    minWidth: 90,
+  },
+  counterValue: {
+    fontFamily: font.displayX,
+    fontSize: 30,
+    lineHeight: 34,
+  },
+  counterUnit: {
+    fontFamily: font.body,
+    fontSize: 11,
+  },
+  bristolRow: {
+    gap: 8,
+    paddingHorizontal: 3,
+    paddingVertical: 6,
+  },
+  bristolButton: {
+    width: 64,
+    minHeight: 64,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  energyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 7,
+  },
+  energyChoice: {
+    flex: 1,
+  },
+  energyButton: {
+    minHeight: 54,
+    borderRadius: 16,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  energyButtonActive: {
+    shadowColor: violet[400],
+    shadowOpacity: 0.6,
+    shadowRadius: 13,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 7,
+  },
+  energyEmoji: {
+    fontSize: 25,
+    lineHeight: 31,
+  },
+  foodImpactHint: {
+    fontFamily: font.body,
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: -4,
+    marginBottom: 10,
+  },
+  foodImpactLegend: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginBottom: 12,
+  },
+  foodImpactLegendText: {
+    fontFamily: font.bodySemi,
+    fontSize: 10,
+  },
+  foodImpactList: {
+    gap: 10,
+  },
+  foodImpactCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 13,
+    paddingVertical: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+  foodImpactMeal: {
+    flex: 1,
+    minWidth: 0,
+  },
+  foodImpactMealName: {
+    fontFamily: font.display,
+    fontSize: 13,
+  },
+  foodImpactTime: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 4,
+  },
+  foodImpactTimeText: {
+    fontFamily: font.body,
+    fontSize: 11,
+  },
+  foodImpactChoices: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  foodImpactButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 13,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  foodImpactEmoji: {
+    fontSize: 20,
+    lineHeight: 25,
+  },
+  foodImpactEmpty: {
+    minHeight: 74,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+  },
+  foodImpactEmptyEmoji: {
+    fontSize: 20,
+  },
+  foodImpactEmptyText: {
+    fontFamily: font.body,
+    fontSize: 12,
+  },
+  complianceGroup: {
+    flexDirection: 'row',
+    gap: 5,
+    padding: 4,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+  complianceChoice: {
+    flex: 1,
+  },
+  complianceButton: {
+    minHeight: 42,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  complianceLabel: {
+    fontFamily: font.display,
+    fontSize: 13,
+  },
+  missReasonSection: {
+    marginTop: 14,
+  },
+  missReasonLabel: {
+    fontFamily: font.bodySemi,
+    fontSize: 12,
+    marginBottom: 9,
+  },
+  missReasonGroup: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  missReasonButton: {
+    paddingHorizontal: 13,
+    paddingVertical: 9,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  missReasonText: {
+    fontFamily: font.bodySemi,
+    fontSize: 12,
   },
   toggleRow: {
     flexDirection: 'row',
@@ -1208,6 +1947,11 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     borderRadius: 16,
     alignItems: 'center',
+    shadowColor: violet[500],
+    shadowOpacity: 0.48,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 8,
   },
   saveLabel: {
     fontFamily: font.display,

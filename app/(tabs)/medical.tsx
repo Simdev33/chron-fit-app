@@ -21,6 +21,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { BackgroundWrapper } from '@/components/BackgroundWrapper';
 import { DualLineChart } from '@/components/figma/DualLineChart';
 import { HealthCalendar } from '@/components/figma/HealthCalendar';
 import { ProfileModal } from '@/components/figma/ProfileModal';
@@ -112,7 +113,7 @@ export default function MedicalScreen() {
   };
 
   return (
-    <View style={{ flex: 1, backgroundColor: p.bg }}>
+    <BackgroundWrapper variant="health">
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{
@@ -362,7 +363,7 @@ export default function MedicalScreen() {
           onClose={() => setProfileOpen(false)}
         />
       ) : null}
-    </View>
+    </BackgroundWrapper>
   );
 }
 

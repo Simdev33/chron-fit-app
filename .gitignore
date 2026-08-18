@@ -31,6 +31,7 @@ yarn-error.*
 *.pem
 
 # local env files
+.env
 .env*.local
 
 # typescript
@@ -46,3 +47,5 @@ expo-qr.png
 expo-go-57-qr.png
 design-ref/
 .vercel/
+
+.vercel
