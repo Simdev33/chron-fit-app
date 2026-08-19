@@ -289,8 +289,12 @@ export default function MedicalScreen() {
               flexDirection: 'row',
               alignItems: 'center',
               justifyContent: 'space-between',
+              // The label's own marginBottom would sit inside this row and
+              // push the button down onto the card; the gap belongs here.
+              marginBottom: 12,
             }}>
-            <Text style={[styles.sectionLabel, { color: p.muted }]}>
+            <Text
+              style={[styles.sectionLabel, { color: p.muted, marginBottom: 0 }]}>
               Legutóbbi laboreredmények
             </Text>
             <Pressable
