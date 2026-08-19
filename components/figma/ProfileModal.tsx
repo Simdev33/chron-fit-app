@@ -37,7 +37,7 @@ import {
 import { DocumentImportSheet } from '@/components/figma/DocumentImportSheet';
 import { confirmDestructive } from '@/utils/confirmDialog';
 import { deleteDocument } from '@/utils/documentStore';
-import { AddMedicationSheet } from '@/components/figma/AddMedicationSheet';
+import { AddMedicationModal } from '@/components/organizer/AddMedicationModal';
 import { AVATAR_COLORS, blue, font, violet } from '@/constants/figma';
 import { useHealthLog } from '@/context/HealthLogContext';
 import {
@@ -1365,9 +1365,13 @@ export function ProfileModal({
         onClose={() => setDocumentOpen(false)}
       />
 
-      <AddMedicationSheet
+      <AddMedicationModal
         visible={addMedicationOpen}
         onClose={() => setAddMedicationOpen(false)}
+        onAdd={(item) => {
+          addMedication(item);
+          updateProfile({ noPrescribedMeds: false });
+        }}
       />
     </Modal>
   );

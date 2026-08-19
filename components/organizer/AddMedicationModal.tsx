@@ -200,6 +200,19 @@ export function AddMedicationModal({
         Number.isFinite(inventory) &&
         inventory > 0);
 
+  // A gomb korábban némán inaktív maradt, és nem derült ki, mi hiányzik.
+  const missing = [
+    form.name.trim().length === 0 && 'név',
+    form.dose.trim().length === 0 && 'dózis',
+    !/^\d{4}-\d{2}-\d{2}$/.test(form.since) && 'kezdés dátuma',
+    isBiologic
+      ? nextDoseDate.length === 0 && 'következő beadás dátuma'
+      : form.times.length === 0 && 'legalább egy időpont',
+    !isBiologic &&
+      !(Number.isFinite(inventory) && inventory > 0) &&
+      'készlet darabszáma',
+  ].filter((value): value is string => typeof value === 'string');
+
   const toggleTime = (time: string) => {
     update(
       'times',
@@ -559,6 +572,12 @@ export function AddMedicationModal({
                   </>
                 )}
 
+                {missing.length > 0 ? (
+                  <Text style={styles.missingHint}>
+                    Még hiányzik: {missing.join(', ')}.
+                  </Text>
+                ) : null}
+
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel="Hozzáadás"
@@ -871,6 +890,13 @@ const styles = StyleSheet.create({
     shadowRadius: 18,
     shadowOffset: { width: 0, height: 6 },
     elevation: 9,
+  },
+  missingHint: {
+    fontFamily: font.body,
+    fontSize: 12,
+    color: '#FBBF24',
+    textAlign: 'center',
+    marginBottom: 10,
   },
   saveDisabled: {
     opacity: 0.4,
