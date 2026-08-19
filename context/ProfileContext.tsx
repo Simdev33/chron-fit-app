@@ -9,6 +9,21 @@ import React, {
 } from 'react';
 
 export type Diagnosis = 'crohn' | 'uc' | 'ibdu';
+
+/** Egy feltöltött orvosi dokumentum nyoma: mit olvastunk ki belőle és mikor. */
+export type ImportedDocument = {
+  id: string;
+  /** ISO időbélyeg az importálás pillanatáról. */
+  importedAt: string;
+  kind: 'photo' | 'pdf';
+  /** A dokumentumból készült rövid összefoglaló. */
+  summary: string;
+  /** Mely profilmezőket töltötte ki a felhasználó jóváhagyásával. */
+  appliedFields: string[];
+  /** Csak natív platformon: az eltárolt eredeti fájl. */
+  fileUri?: string;
+  fileName?: string;
+};
 export type Phase = 'remission' | 'flare' | 'unknown';
 
 /** Gyógyszer / vitamin / kiegészítő a kezdő dátummal. */
@@ -61,6 +76,8 @@ export type Profile = {
   dietApproach: string;
   /** Feltöltött orvosi dokumentumból kiolvasott összefoglaló Flóra számára. */
   documentSummary: string;
+  /** Importált dokumentumok, legfrissebb elöl. */
+  importedDocuments: ImportedDocument[];
   noExercise: boolean;
   workoutFrequency: number;
   workoutFocus: string[];
@@ -103,6 +120,7 @@ const defaultProfile: Profile = {
   fiberTolerance: 3,
   dietApproach: 'standard',
   documentSummary: '',
+  importedDocuments: [],
   noExercise: false,
   workoutFrequency: 3,
   workoutFocus: [],

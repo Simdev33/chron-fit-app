@@ -1,8 +1,10 @@
 import Slider from '@react-native-community/slider';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as Sharing from 'expo-sharing';
 import {
   Camera,
   ChevronLeft,
+  FileText,
   FileUp,
   Package,
   Pill,
@@ -12,6 +14,7 @@ import {
 } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
 import {
+  Alert,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -33,12 +36,14 @@ import {
   usePalette,
 } from '@/components/figma/ui';
 import { DocumentImportSheet } from '@/components/figma/DocumentImportSheet';
+import { deleteDocument } from '@/utils/documentStore';
 import { AddMedicationModal } from '@/components/organizer/AddMedicationModal';
 import { AVATAR_COLORS, blue, font, violet } from '@/constants/figma';
 import { useHealthLog } from '@/context/HealthLogContext';
 import {
   type Diagnosis,
   diagnosisLabels,
+  type ImportedDocument,
   useProfile,
 } from '@/context/ProfileContext';
 
@@ -134,6 +139,31 @@ export function ProfileModal({
     setFiber(profile.fiberTolerance);
     setDietApproach(profile.dietApproach);
   }, [visible]);
+
+  const removeDocument = (doc: ImportedDocument) => {
+    Alert.alert(
+      'Dokumentum törlése',
+      'A fájl és az összefoglaló törlődik. A profilba már bemásolt adatok megmaradnak.',
+      [
+        { text: 'Mégse', style: 'cancel' },
+        {
+          text: 'Törlés',
+          style: 'destructive',
+          onPress: () => {
+            deleteDocument(doc.fileUri);
+            const rest = profile.importedDocuments.filter(
+              (d) => d.id !== doc.id,
+            );
+            updateProfile({
+              importedDocuments: rest,
+              // Flora's context follows the newest surviving import.
+              documentSummary: rest[0]?.summary ?? '',
+            });
+          },
+        },
+      ],
+    );
+  };
 
   const flushAndClose = () => {
     updateProfile({
@@ -473,6 +503,26 @@ export function ProfileModal({
               </View>
             </Pressable>
           </View>
+
+          {profile.importedDocuments.length > 0 ? (
+            <View style={{ paddingHorizontal: 20, paddingTop: 12, gap: 10 }}>
+              <Text
+                style={{
+                  fontFamily: font.bodySemi,
+                  fontSize: 12,
+                  color: p.muted,
+                }}>
+                Feltöltött dokumentumok
+              </Text>
+              {profile.importedDocuments.map((doc) => (
+                <ImportedDocumentCard
+                  key={doc.id}
+                  doc={doc}
+                  onRemove={() => removeDocument(doc)}
+                />
+              ))}
+            </View>
+          ) : null}
 
           {/* Alapadatok */}
           <SectionHeader title="Alapadatok" />
@@ -1332,6 +1382,84 @@ export function ProfileModal({
         }}
       />
     </Modal>
+  );
+}
+
+
+/** One imported document: what was read from it, and the original if kept. */
+function ImportedDocumentCard({
+  doc,
+  onRemove,
+}: {
+  doc: ImportedDocument;
+  onRemove: () => void;
+}) {
+  const p = usePalette();
+  const date = doc.importedAt.slice(0, 10).replace(/-/g, '. ') + '.';
+
+  const open = async () => {
+    if (!doc.fileUri) return;
+    try {
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(doc.fileUri);
+      }
+    } catch {
+      // Nothing to do: the summary below is still there to read.
+    }
+  };
+
+  return (
+    <GlassCard style={{ padding: 14, gap: 10 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+        <FileText size={16} color={violet[400]} />
+        <Text
+          style={{ flex: 1, fontFamily: font.bodySemi, fontSize: 12, color: p.text }}>
+          {doc.kind === 'pdf' ? 'PDF dokumentum' : 'Fotó dokumentumról'} · {date}
+        </Text>
+        <Pressable onPress={onRemove} hitSlop={8} accessibilityLabel="Dokumentum törlése">
+          <Trash2 size={15} color={p.muted} />
+        </Pressable>
+      </View>
+
+      {doc.summary ? (
+        <Text
+          style={{
+            fontFamily: font.body,
+            fontSize: 12,
+            lineHeight: 18,
+            color: p.muted,
+          }}>
+          {doc.summary}
+        </Text>
+      ) : null}
+
+      {doc.appliedFields.length ? (
+        <Text style={{ fontFamily: font.body, fontSize: 11, color: p.muted }}>
+          Kitöltötte: {doc.appliedFields.join(', ')}
+        </Text>
+      ) : null}
+
+      {doc.fileUri ? (
+        <Pressable
+          onPress={open}
+          style={({ pressed }) => [
+            {
+              alignSelf: 'flex-start',
+              paddingHorizontal: 12,
+              paddingVertical: 7,
+              borderRadius: 999,
+              borderWidth: 1,
+              borderColor: 'rgba(167,139,250,0.5)',
+              opacity: pressed ? 0.75 : 1,
+            },
+          ]}>
+          <Text
+            style={{ fontFamily: font.bodySemi, fontSize: 11, color: violet[400] }}>
+            Eredeti megnyitása
+          </Text>
+        </Pressable>
+      ) : null}
+    </GlassCard>
   );
 }
 

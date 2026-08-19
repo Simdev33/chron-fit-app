@@ -13,7 +13,12 @@ import {
 
 import { BottomSheet, usePalette } from '@/components/figma/ui';
 import { font, violet } from '@/constants/figma';
-import { diagnosisLabels, useProfile } from '@/context/ProfileContext';
+import {
+  diagnosisLabels,
+  useProfile,
+  type ImportedDocument,
+} from '@/context/ProfileContext';
+import { canStoreFiles, saveDocument } from '@/utils/documentStore';
 import {
   analyzeDocument,
   type DocumentFindings,
@@ -103,17 +108,19 @@ export function DocumentImportSheet({
   onClose: () => void;
 }) {
   const p = usePalette();
-  const { updateProfile } = useProfile();
+  const { profile, updateProfile } = useProfile();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [findings, setFindings] = useState<DocumentFindings | null>(null);
   const [rows, setRows] = useState<Row[]>([]);
+  const [picked, setPicked] = useState<PickedMedicalFile | null>(null);
 
   const close = () => {
     setBusy(false);
     setError(null);
     setFindings(null);
     setRows([]);
+    setPicked(null);
     onClose();
   };
 
@@ -124,6 +131,7 @@ export function DocumentImportSheet({
       if (!file) return;
 
       setBusy(true);
+      setPicked(file);
       const result = await analyzeDocument(file);
       setFindings(result);
       setRows(buildRows(result));
@@ -190,6 +198,22 @@ export function DocumentImportSheet({
     // schedule per entry, which a document rarely spells out in full.
     if (findings.summary) patch.documentSummary = findings.summary;
 
+    const importedAt = new Date().toISOString();
+    const stored = picked
+      ? saveDocument(picked, `lelet-${importedAt.slice(0, 10)}-${Date.now()}`)
+      : null;
+
+    const record: ImportedDocument = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      importedAt,
+      kind: picked?.source === 'pdf' ? 'pdf' : 'photo',
+      summary: findings.summary,
+      appliedFields: applied.map((row) => row.label),
+      fileUri: stored?.fileUri,
+      fileName: stored?.fileName,
+    };
+    patch.importedDocuments = [record, ...profile.importedDocuments];
+
     updateProfile(patch);
     close();
   };
@@ -240,8 +264,9 @@ export function DocumentImportSheet({
             </Pressable>
 
             <Text style={[styles.privacy, { color: p.muted }]}>
-              A dokumentum feldolgozásra elküldjük, de nem tároljuk: csak a
-              belőle kiolvasott adatok kerülnek a telefonodra.
+              {canStoreFiles()
+                ? 'A dokumentum a telefonodon marad, és később is visszanézheted. A kiolvasáshoz egyszer elküldjük feldolgozásra.'
+                : 'A kiolvasáshoz elküldjük feldolgozásra. Böngészőben az eredeti fájlt nem tudjuk megőrizni, csak a belőle kiolvasott adatokat.'}
             </Text>
 
             {busy ? (
