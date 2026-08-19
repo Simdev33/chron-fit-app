@@ -14,7 +14,6 @@ import {
 } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
 import {
-  Alert,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -36,8 +35,9 @@ import {
   usePalette,
 } from '@/components/figma/ui';
 import { DocumentImportSheet } from '@/components/figma/DocumentImportSheet';
+import { confirmDestructive } from '@/utils/confirmDialog';
 import { deleteDocument } from '@/utils/documentStore';
-import { AddMedicationModal } from '@/components/organizer/AddMedicationModal';
+import { AddMedicationSheet } from '@/components/figma/AddMedicationSheet';
 import { AVATAR_COLORS, blue, font, violet } from '@/constants/figma';
 import { useHealthLog } from '@/context/HealthLogContext';
 import {
@@ -141,28 +141,20 @@ export function ProfileModal({
   }, [visible]);
 
   const removeDocument = (doc: ImportedDocument) => {
-    Alert.alert(
-      'Dokumentum törlése',
-      'A fájl és az összefoglaló törlődik. A profilba már bemásolt adatok megmaradnak.',
-      [
-        { text: 'Mégse', style: 'cancel' },
-        {
-          text: 'Törlés',
-          style: 'destructive',
-          onPress: () => {
-            deleteDocument(doc.fileUri);
-            const rest = profile.importedDocuments.filter(
-              (d) => d.id !== doc.id,
-            );
-            updateProfile({
-              importedDocuments: rest,
-              // Flora's context follows the newest surviving import.
-              documentSummary: rest[0]?.summary ?? '',
-            });
-          },
-        },
-      ],
-    );
+    confirmDestructive({
+      title: 'Dokumentum törlése',
+      message:
+        'A fájl és az összefoglaló törlődik. A profilba már bemásolt adatok megmaradnak.',
+      onConfirm: () => {
+        deleteDocument(doc.fileUri);
+        const rest = profile.importedDocuments.filter((d) => d.id !== doc.id);
+        updateProfile({
+          importedDocuments: rest,
+          // Flora's context follows the newest surviving import.
+          documentSummary: rest[0]?.summary ?? '',
+        });
+      },
+    });
   };
 
   const flushAndClose = () => {
@@ -1373,13 +1365,9 @@ export function ProfileModal({
         onClose={() => setDocumentOpen(false)}
       />
 
-      <AddMedicationModal
+      <AddMedicationSheet
         visible={addMedicationOpen}
         onClose={() => setAddMedicationOpen(false)}
-        onAdd={(item) => {
-          addMedication(item);
-          updateProfile({ noPrescribedMeds: false });
-        }}
       />
     </Modal>
   );

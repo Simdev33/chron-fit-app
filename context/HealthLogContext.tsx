@@ -79,12 +79,20 @@ export type AppointmentEntry = {
   medicationId?: string;
 };
 
+/** Milyen napokon esedékes. Hiánya napi szedést jelent. */
+export type MedicationSchedule =
+  | { kind: 'daily' }
+  | { kind: 'weekly'; weekday: number }
+  | { kind: 'monthly'; monthDay: number };
+
 export type MedicationEntry = {
   id: string;
   name: string;
   dose: string;
   type: 'pill' | 'supplement' | 'biologic';
   times: string[];
+  schedule?: MedicationSchedule;
+  /** refillThreshold 0 esetén nem követjük a készletet. */
   inventoryRemaining: number;
   refillThreshold: number;
   since: string;
@@ -148,6 +156,18 @@ const seedMedications: MedicationEntry[] = [
   },
 ];
 
+function normalizeSchedule(raw: unknown): MedicationSchedule | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const value = raw as Record<string, unknown>;
+  if (value.kind === 'weekly' && Number.isFinite(Number(value.weekday))) {
+    return { kind: 'weekly', weekday: Number(value.weekday) };
+  }
+  if (value.kind === 'monthly' && Number.isFinite(Number(value.monthDay))) {
+    return { kind: 'monthly', monthDay: Number(value.monthDay) };
+  }
+  return value.kind === 'daily' ? { kind: 'daily' } : undefined;
+}
+
 function normalizeMedications(raw: unknown): MedicationEntry[] {
   if (!Array.isArray(raw)) return seedMedications;
   return raw.flatMap((value, index) => {
@@ -171,6 +191,7 @@ function normalizeMedications(raw: unknown): MedicationEntry[] {
               ? 'biologic'
               : 'pill',
         times: times.length > 0 ? times : ['08:00'],
+        schedule: normalizeSchedule(item.schedule),
         inventoryRemaining:
           item.type === 'biologic'
             ? 0
@@ -201,6 +222,21 @@ function normalizeMedications(raw: unknown): MedicationEntry[] {
       },
     ];
   });
+}
+
+/** Esedékes-e ma ez a gyógyszer a saját ütemezése szerint. */
+export function isMedicationDueOn(
+  medication: MedicationEntry,
+  date: Date,
+): boolean {
+  const schedule = medication.schedule;
+  if (!schedule || schedule.kind === 'daily') return true;
+  if (schedule.kind === 'weekly') {
+    // A hét hétfővel kezdődik, ahogy a felvitel képernyőn.
+    const weekday = (date.getDay() + 6) % 7;
+    return weekday === schedule.weekday;
+  }
+  return date.getDate() === schedule.monthDay;
 }
 
 export function medicationDoseKey(id: string, time: string): string {

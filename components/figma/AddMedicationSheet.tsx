@@ -11,7 +11,11 @@ import {
 
 import { BottomSheet, usePalette } from '@/components/figma/ui';
 import { font, violet } from '@/constants/figma';
-import { useHealthLog } from '@/context/HealthLogContext';
+import {
+  type MedicationSchedule,
+  toIsoDate,
+  useHealthLog,
+} from '@/context/HealthLogContext';
 import { useProfile } from '@/context/ProfileContext';
 
 const HOURS = [6, 7, 8, 9, 10, 12, 14, 16, 18, 20, 21, 22];
@@ -63,11 +67,24 @@ export function AddMedicationSheet({
         : frequency;
 
   const save = () => {
+    const schedule: MedicationSchedule =
+      frequency === 'Hetente'
+        ? { kind: 'weekly', weekday }
+        : frequency === 'Havonta'
+          ? { kind: 'monthly', monthDay }
+          : { kind: 'daily' };
+
     addMedication({
       name: name.trim(),
       dose: dose.trim(),
-      time: `${hour}:${minute}`,
-      times: timesLabel,
+      type: 'pill',
+      times: [`${String(hour).padStart(2, '0')}:${minute}`],
+      schedule,
+      // This form does not ask about stock, and a zero threshold is how the
+      // timeline knows not to warn about it.
+      inventoryRemaining: 0,
+      refillThreshold: 0,
+      since: toIsoDate(new Date()),
     });
     updateProfile({ noPrescribedMeds: false });
     setName('');

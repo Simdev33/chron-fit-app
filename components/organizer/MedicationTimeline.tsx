@@ -14,6 +14,7 @@ import {
   medicationDoseKey,
   useHealthLog,
   type MedicationEntry,
+  isMedicationDueOn,
 } from '@/context/HealthLogContext';
 import { useAppTheme } from '@/context/ThemeContext';
 import { triggerFloraSpeech } from '@/utils/floraSpeech';
@@ -67,7 +68,10 @@ function TimelineCard({
     ],
   }));
 
-  const lowStock = item.inventoryRemaining <= item.refillThreshold;
+  // A nulla küszöb azt jelenti, hogy ennél a szernél nem követünk készletet,
+  // különben minden ilyen bejegyzés örökre "fogytán" állapotban állna.
+  const tracksInventory = item.refillThreshold > 0;
+  const lowStock = tracksInventory && item.inventoryRemaining <= item.refillThreshold;
   const ItemIcon =
     item.type === 'pill'
       ? Pill
@@ -172,7 +176,9 @@ export function MedicationTimeline() {
 
   const meds = useMemo<TimelineMedication[]>(
     () =>
-      log.medications.flatMap((medication) =>
+      log.medications
+        .filter((medication) => isMedicationDueOn(medication, new Date()))
+        .flatMap((medication) =>
         medication.times.map((time) => ({
           ...medication,
           time,
@@ -199,6 +205,7 @@ export function MedicationTimeline() {
       takeMedicationDose(id, time);
 
       if (
+        item.refillThreshold > 0 &&
         newInventory <= item.refillThreshold &&
         !refillAlerted.current.has(item.id)
       ) {
