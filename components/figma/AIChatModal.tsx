@@ -20,6 +20,7 @@ import { useKeyboardHeight, usePalette } from '@/components/figma/ui';
 import { blue, font, violet } from '@/constants/figma';
 import type { FloraChatMessage } from '@/types/floraChat';
 import { useProfile } from '@/context/ProfileContext';
+import { buildUserContext } from '@/utils/buildUserContext';
 import { requestFloraReply } from '@/utils/floraChatApi';
 
 const INITIAL: FloraChatMessage[] = [
@@ -54,24 +55,6 @@ export function ChatbotView({
   const [errorText, setErrorText] = useState<string | null>(null);
   const scrollRef = useRef<ScrollView>(null);
 
-  /** Only what the user has actually filled in; no placeholders, no guesses. */
-  const buildUserContext = () => {
-    const parts: string[] = [];
-    if (profile.documentSummary) parts.push(profile.documentSummary);
-    if (profile.hasStoma) {
-      parts.push(`Sztómája van${profile.stomaType ? ` (${profile.stomaType})` : ''}.`);
-    }
-    if (profile.resectedSegments.length) {
-      parts.push(`Érintett bélszakaszok: ${profile.resectedSegments.join(', ')}.`);
-    }
-    if (profile.hadSurgery && profile.surgeryNotes) {
-      parts.push(`Műtétek: ${profile.surgeryNotes}`);
-    }
-    if (profile.jointSymptoms) parts.push('Ízületi panaszai vannak.');
-    if (profile.skinSymptoms) parts.push('Bőrtünetei vannak.');
-    return parts.join(' ');
-  };
-
   const send = async (text: string) => {
     const trimmed = text.trim();
     if (!trimmed || loading) return;
@@ -89,7 +72,10 @@ export function ChatbotView({
     setLoading(true);
 
     try {
-      const reply = await requestFloraReply(conversation, buildUserContext());
+      const reply = await requestFloraReply(
+        conversation,
+        buildUserContext(profile),
+      );
       setMessages((current) => [
         ...current,
         {
