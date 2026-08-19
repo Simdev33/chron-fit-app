@@ -1,5 +1,7 @@
 import { GoogleGenAI, Type } from '@google/genai';
 
+import { logApiFailure } from '@/utils/apiLogging';
+
 const MODEL = 'gemini-3.5-flash-lite';
 /** A lab report is text-heavy, so it needs more room than a meal photo. */
 const MAX_OUTPUT_TOKENS = 2_000;
@@ -198,7 +200,8 @@ export async function POST(request: Request) {
         : null;
 
     return json({ date, values });
-  } catch {
+  } catch (error) {
+    logApiFailure('analyze-lab', error);
     return json(
       { error: 'A leletbeolvasás most nem érhető el. Próbáld újra később.' },
       502,

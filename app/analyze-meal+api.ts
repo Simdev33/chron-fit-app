@@ -6,6 +6,8 @@ import type {
   MealPhotoResponse,
 } from '@/types/mealPhoto';
 
+import { logApiFailure } from '@/utils/apiLogging';
+
 const MODEL = 'gemini-3.5-flash-lite';
 /** Roughly 3 MB of JPEG once base64 decoding is accounted for. */
 const MAX_IMAGE_BASE64_LENGTH = 4_000_000;
@@ -150,7 +152,8 @@ export async function POST(request: Request) {
           : 0,
       portion: clampPortion(parsed.portion),
     });
-  } catch {
+  } catch (error) {
+    logApiFailure('analyze-meal', error);
     return json(
       { error: 'A képfelismerés most nem érhető el. Próbáld újra később.' },
       502,

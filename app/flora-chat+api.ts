@@ -5,6 +5,8 @@ import type {
   FloraChatResponse,
 } from '@/types/floraChat';
 
+import { logApiFailure } from '@/utils/apiLogging';
+
 const MODEL = 'gemini-3.5-flash-lite';
 const MAX_MESSAGES = 20;
 const MAX_MESSAGE_LENGTH = 2_000;
@@ -367,7 +369,8 @@ export async function POST(request: Request) {
     const reply = hitCap ? trimToLastCompleteSentence(raw) : raw;
 
     return json({ reply: stripAttribution(stripGreeting(reply)) });
-  } catch {
+  } catch (error) {
+    logApiFailure('flora-chat', error);
     return json(
       {
         error:

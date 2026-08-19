@@ -73,26 +73,44 @@ export async function pickLabPhoto(
 
   if (!saved.base64) return null;
   return {
-    base64: saved.base64,
+    base64: stripDataUrlPrefix(saved.base64),
     mimeType: 'image/jpeg',
     source: 'photo',
     previewUri: saved.uri,
   };
 }
 
+/**
+ * The web picker reads files with readAsDataURL, so what comes back is a
+ * "data:application/pdf;base64,..." URL rather than the bare payload. Sending
+ * it whole makes the model reject the file.
+ */
+function stripDataUrlPrefix(value: string) {
+  if (!value.startsWith('data:')) return value;
+  const comma = value.indexOf(',');
+  return comma === -1 ? value : value.slice(comma + 1);
+}
+
 export async function pickLabPdf(): Promise<PickedLabFile | null> {
   const result = await DocumentPicker.getDocumentAsync({
     type: 'application/pdf',
     copyToCacheDirectory: true,
+    // Defaults to false on web despite what the docs say, and without it the
+    // asset only carries a blob: URI that expo-file-system cannot read there.
+    base64: true,
   });
   const asset = result.canceled ? null : result.assets?.[0];
   if (!asset?.uri) return null;
 
-  // The picker only hands back base64 on web; elsewhere we read the file.
-  const base64 = asset.base64 ?? (await new File(asset.uri).base64());
-  if (!base64) return null;
+  // Web hands back base64 directly; native needs the file read from disk.
+  const raw = asset.base64 ?? (await new File(asset.uri).base64());
+  if (!raw) return null;
 
-  return { base64, mimeType: 'application/pdf', source: 'pdf' };
+  return {
+    base64: stripDataUrlPrefix(raw),
+    mimeType: 'application/pdf',
+    source: 'pdf',
+  };
 }
 
 export type LabAnalysis = Exclude<LabAnalyzeResponse, { error: string }>;
