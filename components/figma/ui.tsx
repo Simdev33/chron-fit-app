@@ -103,7 +103,17 @@ export function BottomSheet({
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={{ paddingBottom: keyboardHeight }}>
+          // flex:1 gives the sheet a parent with a real height, without which
+          // its percentage maxHeight is silently dropped and the sheet grows
+          // past the top of the screen, taking the close button with it.
+          // box-none keeps the empty area above it tapping through to the
+          // backdrop, so tap-to-close still works.
+          pointerEvents="box-none"
+          style={{
+            flex: 1,
+            justifyContent: 'flex-end',
+            paddingBottom: keyboardHeight,
+          }}>
           <View
             style={[
               sheetStyles.sheet,
@@ -156,13 +166,15 @@ const sheetStyles = StyleSheet.create({
   backdrop: {
     flex: 1,
     justifyContent: 'flex-end',
-    backgroundColor: 'transparent',
+    // A transparent backdrop left the tab bar looking live while the modal
+    // swallowed its taps, which reads as the app being frozen.
+    backgroundColor: 'rgba(8, 3, 18, 0.55)',
   },
   sheet: {
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     borderTopWidth: 1,
-    maxHeight: '88%',
+    maxHeight: '85%',
     shadowColor: '#000',
     shadowOpacity: 0.35,
     shadowRadius: 24,

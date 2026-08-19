@@ -49,15 +49,23 @@ A beszélgetés menete:
 `.trim();
 
 const KNOWLEDGE_PREAMBLE = `
-Az alábbi ajánlások klinikai irányelvekből származnak (ESPEN, ECCO). Ezeket használd,
-amikor étrendről, tápláltsági állapotról, mikrotápanyagokról, testsúlyról vagy mozgásról
-kérdeznek.
+Az alábbi ismeretek a TE SAJÁT, belső szaktudásod. Nem külső anyagból olvasod fel őket,
+hanem tudod őket, ahogy egy sokat látott szakember tudja a maga területét.
 
-- Ha egy válasz ezekre épül, említsd meg a forrást, például: "az ESPEN irányelve szerint".
-- Ha a kérdésre nincs ide vonatkozó ajánlás, mondd meg őszintén, és ne találj ki adatot.
-- Ezek általános ajánlások, nem a felhasználó személyre szabott kezelési terve; ezt jelezd is.
-- A fenti biztonsági szabályok ezeknél is erősebbek: gyógyszerről és adagolásról továbbra sem
-  nyilatkozol, akkor sem, ha az ajánlás említ ilyet.
+- Úgy beszélj, mint egy nagyon felkészült, tapasztalt szakember: magabiztosan és a magadéként.
+- SOHA ne használd ezeket a szavakat: "ESPEN", "ECCO", "IOIBD", "irányelv", "irányelvek",
+  "iránymutatás", "protokoll", "szakmai ajánlás", "szakmai konszenzus", "konszenzus",
+  "szabvány", "a dokumentum szerint", "a tudásbázis szerint", "a forrás", "a szakirodalom".
+- Ne hivatkozz semmilyen szervezetre, kiadványra, tanulmányra vagy dokumentumra.
+- Ne kezdd így: "az ajánlás szerint", "a szakirodalom szerint". Egyszerűen mondd ki a lényeget.
+- Ha megkérdezik, mire alapozod amit mondasz: egyszerűen és röviden mondd, hogy a szakmai
+  tudásodra. Ne sorolj fel forrástípusokat, ne magyarázkodj, és ne is tagadd, hogy dokumentumot
+  használsz — arról egyáltalán ne essen szó. Terelj vissza a kérdésére.
+- Ha egy kérdésre nincs meg a tudásod, mondd meg őszintén, és ne találj ki adatot.
+- Amit mondasz, az általános szakmai tudás, nem a felhasználó személyre szabott kezelési terve;
+  ezt továbbra is jelezd, és irányítsd orvoshoz vagy dietetikushoz, ahol indokolt.
+- A fenti biztonsági szabályok mindennél erősebbek: gyógyszerről és adagolásról továbbra sem
+  nyilatkozol, akkor sem, ha a tudásod említ ilyet.
 `.trim();
 
 type KnowledgeRow = {
@@ -71,13 +79,16 @@ type KnowledgeRow = {
 let knowledgeCache: { text: string; loadedAt: number } | null = null;
 let knowledgeInFlight: Promise<string> | null = null;
 
+/**
+ * Source and grade stay in the database for provenance, but never reach the
+ * model. Flora speaks from her own expertise, and the surest way to keep a
+ * source name out of an answer is to never put it in the prompt.
+ */
 function formatKnowledge(rows: KnowledgeRow[]) {
   const byTopic = new Map<string, string[]>();
   for (const row of rows) {
-    const ref = [row.source, row.source_ref].filter(Boolean).join(' ');
-    const grade = row.grade ? `, evidencia: ${row.grade}` : '';
     const list = byTopic.get(row.topic) ?? [];
-    list.push(`- ${row.content} [${ref}${grade}]`);
+    list.push(`- ${row.content}`);
     byTopic.set(row.topic, list);
   }
   return [...byTopic.entries()]
@@ -154,6 +165,34 @@ function stripGreeting(reply: string) {
   const stripped = reply.replace(GREETING_PREFIX, '').trimStart();
   // Only accept it if a real answer is left; never hand back a gutted reply.
   return stripped.length >= 20 ? stripped : reply;
+}
+
+/**
+ * Flora presents this knowledge as her own, so attribution clauses must not
+ * survive. The prompt forbids them and the source labels never reach the model,
+ * but this catches anything the model produces from its own training.
+ */
+const ATTRIBUTION_CLAUSES: RegExp[] = [
+  // "az ESPEN irányelve szerint", "az ECCO ajánlása alapján", "az IOIBD szerint"
+  /\b(az?\s+)?(espen|ecco|ioibd)\b[^,.;:!?]{0,45}?\b(szerint|alapján)\b\s*,?\s*/gi,
+  // "a szakmai irányelvek szerint", "a protokoll alapján", "a dokumentum szerint"
+  /\b(az?\s+)?(klinikai\s+|szakmai\s+|nemzetközi\s+)?(irányelvek?|iránymutatások?|protokollok?|konszenzus|szakmai\s+ajánlások?|ajánlások?|dokumentum|tudásbázis|szakirodalom|forrás)\w*\s+\b(szerint|alapján)\b\s*,?\s*/gi,
+];
+
+function stripAttribution(reply: string) {
+  let out = reply;
+  for (const pattern of ATTRIBUTION_CLAUSES) out = out.replace(pattern, '');
+  if (out === reply) return reply;
+
+  out = out
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/(^|\n)\s*,\s*/g, '$1')
+    .trimStart();
+  // Removing a leading clause can leave the sentence starting lowercase.
+  out = out.replace(/(^|\n)([a-záéíóöőúüű])/g, (_m, lead: string, ch: string) =>
+    lead + ch.toUpperCase(),
+  );
+  return out.trim().length >= 20 ? out : reply;
 }
 
 function json(body: FloraChatResponse, status = 200) {
@@ -287,7 +326,7 @@ export async function POST(request: Request) {
       );
     }
 
-    return json({ reply: stripGreeting(reply) });
+    return json({ reply: stripAttribution(stripGreeting(reply)) });
   } catch {
     return json(
       {
