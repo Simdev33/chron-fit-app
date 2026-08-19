@@ -3,8 +3,11 @@ import { GoogleGenAI, Type } from '@google/genai';
 import { logApiFailure } from '@/utils/apiLogging';
 
 const MODEL = 'gemini-3.5-flash-lite';
-/** A lab report is text-heavy, so it needs more room than a meal photo. */
-const MAX_OUTPUT_TOKENS = 2_000;
+// A real panel runs to dozens of analytes with six fields each. At 2000 the
+// model stopped mid-object and JSON.parse threw on the fragment.
+const MAX_OUTPUT_TOKENS = 8_000;
+// The SDK gives up at 30s by default, which a long report can exceed.
+const GEMINI_TIMEOUT_MS = 90_000;
 const MAX_FILE_BASE64_LENGTH = 8_000_000;
 const MIN_FILE_BASE64_LENGTH = 500;
 const MAX_VALUES = 40;
@@ -44,7 +47,10 @@ Laborleleteket olvasol ki egy egészségnaplózó alkalmazás számára.
   hagyd üresen.
 - A tizedesvesszőt tizedespontként add vissza.
 - Ne értelmezd az eredményeket, ne írj véleményt, ne adj tanácsot. Csak kiolvasol.
-- Ha a kép vagy a fájl nem laborlelet, üres values listát adj vissza.
+- A dokumentum lehet zárójelentés, ambuláns lap vagy kórházi összefoglaló is: ilyenkor is
+  szedd ki a benne szereplő laborértékeket, bárhol is szerepelnek a szövegben.
+- Csak akkor adj vissza üres values listát, ha a dokumentumban egyáltalán nincs mért
+  laboreredmény.
 `.trim();
 
 type RateLimitEntry = { count: number; resetAt: number };
@@ -109,7 +115,11 @@ export async function POST(request: Request) {
   }
 
   try {
-    const ai = new GoogleGenAI({ apiKey, apiVersion: 'v1' });
+    const ai = new GoogleGenAI({
+      apiKey,
+      apiVersion: 'v1',
+      httpOptions: { timeout: GEMINI_TIMEOUT_MS },
+    });
     const response = await ai.models.generateContent({
       model: MODEL,
       contents: [
@@ -166,10 +176,19 @@ export async function POST(request: Request) {
       return json({ error: 'Nem sikerült kiolvasni a leletet.' }, 502);
     }
 
-    const parsed = JSON.parse(raw) as {
-      date?: string;
-      values?: ExtractedValue[];
-    };
+    let parsed: { date?: string; values?: ExtractedValue[] };
+    try {
+      parsed = JSON.parse(raw) as typeof parsed;
+    } catch {
+      // Almost always a reply cut off at the token ceiling mid-object.
+      return json(
+        {
+          error:
+            'Ez a lelet túl hosszú volt egyben. Próbáld oldalanként, vagy fotózd le a laboreredményeket tartalmazó részt.',
+        },
+        422,
+      );
+    }
     const values = (parsed.values ?? [])
       .filter((row) => row?.name?.trim() && Number.isFinite(Number(row.value)))
       .slice(0, MAX_VALUES)
@@ -188,7 +207,7 @@ export async function POST(request: Request) {
       return json(
         {
           error:
-            'Ezen nem találtam laboreredményt. Ellenőrizd, hogy a lelet jól látszik-e a képen.',
+            'Ebben a dokumentumban nem találtam mért laboreredményt. Zárójelentésben és ambuláns lapon gyakran csak szövegesen említik őket — ilyenkor magát a laborleletet töltsd fel.',
         },
         422,
       );
