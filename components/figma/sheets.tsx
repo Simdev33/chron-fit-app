@@ -12,6 +12,10 @@ import {
 } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
+  Alert,
+  Image,
+  Platform,
   Pressable,
   ScrollView,
   type StyleProp,
@@ -27,6 +31,11 @@ import Animated, {
   withSpring,
 } from 'react-native-reanimated';
 import Svg, { Circle } from 'react-native-svg';
+
+import {
+  analyzeMealPhoto,
+  pickMealPhoto,
+} from '@/utils/analyzeMealPhoto';
 
 import {
   BottomSheet,
@@ -812,6 +821,9 @@ export function MealSheet({
   );
   const [mealType, setMealType] = useState<MealType>('lunch');
   const [customKcal, setCustomKcal] = useState('');
+  const [photoUri, setPhotoUri] = useState<string | null>(null);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [photoError, setPhotoError] = useState<string | null>(null);
   const portions = [
     { id: 'small', label: 'Kicsi' },
     { id: 'medium', label: 'Közepes' },
@@ -829,12 +841,54 @@ export function MealSheet({
   const hasCustom = !Number.isNaN(customValue) && customValue > 0;
   const calories = hasCustom ? customValue : estimated;
 
+  const runPhotoAnalysis = async (source: 'camera' | 'library') => {
+    setPhotoError(null);
+    try {
+      const picked = await pickMealPhoto(source);
+      if (!picked) return;
+
+      setPhotoUri(picked.uri);
+      setAnalyzing(true);
+      const result = await analyzeMealPhoto(picked.base64);
+
+      // The estimate is a starting point, not a verdict: every field stays
+      // editable so the user can correct whatever the photo got wrong.
+      setName(result.name);
+      setPortion(result.portion);
+      if (result.calories > 0) setCustomKcal(String(result.calories));
+    } catch (error) {
+      setPhotoError(
+        error instanceof Error
+          ? error.message
+          : 'Nem sikerült elemezni a képet.',
+      );
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
+  const choosePhotoSource = () => {
+    if (analyzing) return;
+    // No camera roll prompt on web; the file picker covers both there.
+    if (Platform.OS === 'web') {
+      void runPhotoAnalysis('library');
+      return;
+    }
+    Alert.alert('Fotó az ételről', 'Honnan válasszunk képet?', [
+      { text: 'Kamera', onPress: () => void runPhotoAnalysis('camera') },
+      { text: 'Galéria', onPress: () => void runPhotoAnalysis('library') },
+      { text: 'Mégse', style: 'cancel' },
+    ]);
+  };
+
   const save = () => {
     addMealForToday({ name: name.trim(), portion, mealType, calories });
     setName('');
     setPortion('medium');
     setMealType('lunch');
     setCustomKcal('');
+    setPhotoUri(null);
+    setPhotoError(null);
     onClose();
   };
 
@@ -844,28 +898,95 @@ export function MealSheet({
         contentContainerStyle={styles.sheetBody}
         keyboardShouldPersistTaps="handled">
         <Pressable
-          style={{
-            paddingVertical: 40,
-            borderRadius: 16,
-            alignItems: 'center',
-            gap: 8,
-            borderWidth: 2,
-            borderStyle: 'dashed',
-            borderColor: p.dark ? 'rgba(255,255,255,0.15)' : '#E9D5FF',
-          }}>
-          <Camera
-            size={28}
-            color={p.dark ? 'rgba(255,255,255,0.3)' : '#D8B4FE'}
-          />
+          accessibilityRole="button"
+          accessibilityLabel="Fotó az ételről"
+          onPress={choosePhotoSource}
+          disabled={analyzing}
+          style={({ pressed }) => [
+            {
+              paddingVertical: photoUri ? 0 : 40,
+              borderRadius: 16,
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8,
+              overflow: 'hidden',
+              borderWidth: 2,
+              borderStyle: photoUri ? 'solid' : 'dashed',
+              borderColor: p.dark ? 'rgba(255,255,255,0.15)' : '#E9D5FF',
+              opacity: pressed && !analyzing ? 0.75 : 1,
+            },
+          ]}>
+          {photoUri ? (
+            <>
+              <Image
+                source={{ uri: photoUri }}
+                style={{ width: '100%', height: 180 }}
+                resizeMode="cover"
+              />
+              {analyzing ? (
+                <View
+                  style={[
+                    StyleSheet.absoluteFill,
+                    {
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 10,
+                      backgroundColor: 'rgba(12, 4, 26, 0.72)',
+                    },
+                  ]}>
+                  <ActivityIndicator color={violet[400]} />
+                  <Text
+                    style={{
+                      fontSize: 13,
+                      fontFamily: font.bodyMedium,
+                      color: '#FFFFFF',
+                    }}>
+                    Megnézem, mi van a tányéron…
+                  </Text>
+                </View>
+              ) : null}
+            </>
+          ) : (
+            <>
+              {analyzing ? (
+                <ActivityIndicator color={violet[400]} />
+              ) : (
+                <Camera
+                  size={28}
+                  color={p.dark ? 'rgba(255,255,255,0.3)' : '#D8B4FE'}
+                />
+              )}
+              <Text
+                style={{
+                  fontSize: 14,
+                  fontFamily: font.bodyMedium,
+                  color: p.dark ? 'rgba(255,255,255,0.3)' : '#D8B4FE',
+                }}>
+                {analyzing ? 'Megnézem, mi van a tányéron…' : 'Fotó az ételről'}
+              </Text>
+              <Text
+                style={{
+                  fontSize: 11,
+                  fontFamily: font.body,
+                  color: p.dark ? 'rgba(255,255,255,0.22)' : '#DDD6FE',
+                }}>
+                Kitöltöm helyetted a nevet és a kalóriát
+              </Text>
+            </>
+          )}
+        </Pressable>
+
+        {photoError ? (
           <Text
             style={{
-              fontSize: 14,
-              fontFamily: font.bodyMedium,
-              color: p.dark ? 'rgba(255,255,255,0.3)' : '#D8B4FE',
+              fontSize: 12,
+              fontFamily: font.body,
+              color: '#FCA5A5',
+              marginTop: -4,
             }}>
-            Fotó az ételről
+            {photoError}
           </Text>
-        </Pressable>
+        ) : null}
 
         <View>
           <FieldLabel>Étel neve</FieldLabel>
