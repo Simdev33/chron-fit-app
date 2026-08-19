@@ -44,6 +44,21 @@ export type Profile = {
   noVitamins: boolean;
   noFitnessSupplements: boolean;
   noTriggerFoods: boolean;
+  /** Érintett vagy eltávolított bélszakaszok. */
+  resectedSegments: string[];
+  hasStoma: boolean;
+  /** Csak akkor értelmes, ha hasStoma igaz. */
+  stomaType: string;
+  hadSurgery: boolean;
+  surgeryNotes: string;
+  /** Ízületi panaszok (bélrendszeren kívüli tünet). */
+  jointSymptoms: boolean;
+  /** Bőrtünetek (bélrendszeren kívüli tünet). */
+  skinSymptoms: boolean;
+  /** Rosttolerancia 1-5 skálán. */
+  fiberTolerance: number;
+  /** 'low-residue' | 'standard' | 'high-fiber' */
+  dietApproach: string;
   noExercise: boolean;
   workoutFrequency: number;
   workoutFocus: string[];
@@ -75,6 +90,16 @@ const defaultProfile: Profile = {
   noVitamins: false,
   noFitnessSupplements: false,
   noTriggerFoods: false,
+  resectedSegments: [],
+  hasStoma: false,
+  stomaType: '',
+  hadSurgery: false,
+  surgeryNotes: '',
+  jointSymptoms: false,
+  skinSymptoms: false,
+  // Neutral until the user says otherwise; the old UI defaults were demo values.
+  fiberTolerance: 3,
+  dietApproach: 'standard',
   noExercise: false,
   workoutFrequency: 3,
   workoutFocus: [],

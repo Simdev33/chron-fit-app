@@ -90,21 +90,18 @@ export function ProfileModal({
   const [condition, setCondition] = useState(
     diagnosisLabels[profile.diagnosis] ?? CONDITIONS[0],
   );
-  const [segments, setSegments] = useState<string[]>([
-    'Terminális ileum',
-    'Vakbél',
-  ]);
+  const [segments, setSegments] = useState<string[]>(profile.resectedSegments);
   const [triggers, setTriggers] = useState<string[]>(profile.triggerFoods);
   const [addMedicationOpen, setAddMedicationOpen] = useState(false);
   const [noTriggers, setNoTriggers] = useState(profile.noTriggerFoods);
-  const [stoma, setStoma] = useState(false);
-  const [stomaType, setStomaType] = useState('');
-  const [surgery, setSurgery] = useState(false);
-  const [surgeryText, setSurgeryText] = useState('');
-  const [joints, setJoints] = useState(false);
-  const [skin, setSkin] = useState(false);
-  const [fiber, setFiber] = useState(2);
-  const [dietApproach, setDietApproach] = useState('low-residue');
+  const [stoma, setStoma] = useState(profile.hasStoma);
+  const [stomaType, setStomaType] = useState(profile.stomaType);
+  const [surgery, setSurgery] = useState(profile.hadSurgery);
+  const [surgeryText, setSurgeryText] = useState(profile.surgeryNotes);
+  const [joints, setJoints] = useState(profile.jointSymptoms);
+  const [skin, setSkin] = useState(profile.skinSymptoms);
+  const [fiber, setFiber] = useState(profile.fiberTolerance);
+  const [dietApproach, setDietApproach] = useState(profile.dietApproach);
   const [frequency, setFrequency] = useState(profile.workoutFrequency || 3);
   const [focus, setFocus] = useState<string[]>(profile.workoutFocus);
   const [noExercise, setNoExercise] = useState(profile.noExercise);
@@ -124,6 +121,15 @@ export function ProfileModal({
     setFrequency(profile.workoutFrequency || 3);
     setFocus(profile.workoutFocus);
     setNoExercise(profile.noExercise);
+    setSegments(profile.resectedSegments);
+    setStoma(profile.hasStoma);
+    setStomaType(profile.stomaType);
+    setSurgery(profile.hadSurgery);
+    setSurgeryText(profile.surgeryNotes);
+    setJoints(profile.jointSymptoms);
+    setSkin(profile.skinSymptoms);
+    setFiber(profile.fiberTolerance);
+    setDietApproach(profile.dietApproach);
   }, [visible]);
 
   const flushAndClose = () => {
@@ -133,6 +139,17 @@ export function ProfileModal({
       age,
       weightKg: weight,
       heightCm: height,
+      // These used to live only in component state, so everything the user
+      // entered here was thrown away the moment the sheet closed.
+      resectedSegments: segments,
+      hasStoma: stoma,
+      stomaType: stoma ? stomaType : '',
+      hadSurgery: surgery,
+      surgeryNotes: surgery ? surgeryText : '',
+      jointSymptoms: joints,
+      skinSymptoms: skin,
+      fiberTolerance: fiber,
+      dietApproach,
     });
     onClose();
   };
