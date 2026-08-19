@@ -64,6 +64,12 @@ const CONDITIONS = ['Crohn-betegség', 'Colitis ulcerosa', 'IBD – nem besorolt
  * was rebuilt around the organiser's scheduled medications. Both belong here:
  * the list above tracks doses and times, these record what the user takes.
  */
+/**
+ * A Szervező ütemezett gyógyszerlistája és a hozzá tartozó gomb egyelőre rejtve.
+ * A kód szándékosan a helyén marad, hogy egyetlen sorral visszakapcsolható legyen.
+ */
+const SHOW_SCHEDULED_MEDICATIONS = false;
+
 const SUPPLEMENT_LISTS = [
   {
     key: 'prescribedMeds',
@@ -745,8 +751,9 @@ export function ProfileModal({
           {/* Gyógyszerek */}
           <SectionHeader
             title="Gyógyszerek és étrend-kiegészítők"
-            subtitle="Ugyanaz a lista jelenik meg a Szervező idővonalán is"
+            subtitle="Amit rendszeresen szedsz, a kezdés hónapjával"
           />
+          {SHOW_SCHEDULED_MEDICATIONS ? (
           <View style={{ paddingHorizontal: 20, gap: 12 }}>
             {log.medications.map((medication) => {
               const ItemIcon =
@@ -842,6 +849,7 @@ export function ProfileModal({
               </Text>
             </Pressable>
           </View>
+          ) : null}
 
           <View style={{ paddingHorizontal: 20, paddingTop: 20, gap: 18 }}>
             {SUPPLEMENT_LISTS.map((list) => (

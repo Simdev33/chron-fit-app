@@ -590,7 +590,6 @@ export function DatedTagInput({
             onSubmitEditing={startAdd}
             placeholder={placeholder}
             placeholderTextColor={p.placeholder}
-            editable={!noneActive}
             style={{
               flex: 1,
               borderRadius: 12,
@@ -602,19 +601,17 @@ export function DatedTagInput({
               backgroundColor: p.fieldBgStrong,
               borderWidth: 1,
               borderColor: p.fieldBorder,
-              opacity: noneActive ? 0.5 : 1,
             }}
           />
           <Pressable
             onPress={startAdd}
-            disabled={noneActive}
             style={({ pressed }) => ({
               paddingHorizontal: 16,
               justifyContent: 'center',
               borderRadius: 12,
               backgroundColor: violet[600],
-              opacity: noneActive ? 0.5 : pressed ? 0.85 : 1,
-              transform: [{ scale: pressed && !noneActive ? 0.95 : 1 }],
+              opacity: pressed ? 0.85 : 1,
+              transform: [{ scale: pressed ? 0.95 : 1 }],
             })}>
             <Text
               style={{ color: '#fff', fontFamily: font.display, fontSize: 14 }}>
