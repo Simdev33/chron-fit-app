@@ -66,6 +66,18 @@ A beszélgetés menete:
 - Vágj bele egyből a lényegbe, ahogy egy folyamatos beszélgetésben tennéd.
 `.trim();
 
+/** Guards against a bloated or pasted-in context arriving from the client. */
+const MAX_USER_CONTEXT_LENGTH = 1_200;
+
+const USER_CONTEXT_PREAMBLE = `
+Az alábbi néhány mondat arról szól, akivel épp beszélgetsz. A saját profiljából származik.
+
+- Vedd figyelembe, amikor releváns: erre szabd a tanácsot, és ne mondj ellent neki.
+- Ne sorold vissza neki, amit tudsz róla, és ne ezzel kezdd a választ.
+- Ne egészítsd ki, és ne következtess belőle olyasmire, ami nem szerepel benne.
+- Ha ellentmond annak, amit a beszélgetésben mond, a beszélgetés az erősebb.
+`.trim();
+
 const KNOWLEDGE_PREAMBLE = `
 Az alábbi ismeretek a TE SAJÁT, belső szaktudásod. Nem külső anyagból olvasod fel őket,
 hanem tudod őket, ahogy egy sokat látott szakember tudja a maga területét.
@@ -332,9 +344,18 @@ export async function POST(request: Request) {
 
   try {
     const knowledge = await getKnowledge();
-    const systemInstruction = knowledge
-      ? `${SYSTEM_INSTRUCTION}\n\n${KNOWLEDGE_PREAMBLE}\n\n${knowledge}`
-      : SYSTEM_INSTRUCTION;
+    const userContext =
+      typeof body.userContext === 'string'
+        ? body.userContext.trim().slice(0, MAX_USER_CONTEXT_LENGTH)
+        : '';
+
+    const systemInstruction = [
+      SYSTEM_INSTRUCTION,
+      knowledge ? `${KNOWLEDGE_PREAMBLE}\n\n${knowledge}` : '',
+      userContext ? `${USER_CONTEXT_PREAMBLE}\n\n${userContext}` : '',
+    ]
+      .filter(Boolean)
+      .join('\n\n');
 
     const ai = new GoogleGenAI({
       apiKey,

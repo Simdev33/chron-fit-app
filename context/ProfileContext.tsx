@@ -59,6 +59,8 @@ export type Profile = {
   fiberTolerance: number;
   /** 'low-residue' | 'standard' | 'high-fiber' */
   dietApproach: string;
+  /** Feltöltött orvosi dokumentumból kiolvasott összefoglaló Flóra számára. */
+  documentSummary: string;
   noExercise: boolean;
   workoutFrequency: number;
   workoutFocus: string[];
@@ -100,6 +102,7 @@ const defaultProfile: Profile = {
   // Neutral until the user says otherwise; the old UI defaults were demo values.
   fiberTolerance: 3,
   dietApproach: 'standard',
+  documentSummary: '',
   noExercise: false,
   workoutFrequency: 3,
   workoutFocus: [],

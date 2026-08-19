@@ -19,6 +19,7 @@ import { BackgroundWrapper } from '@/components/BackgroundWrapper';
 import { useKeyboardHeight, usePalette } from '@/components/figma/ui';
 import { blue, font, violet } from '@/constants/figma';
 import type { FloraChatMessage } from '@/types/floraChat';
+import { useProfile } from '@/context/ProfileContext';
 import { requestFloraReply } from '@/utils/floraChatApi';
 
 const INITIAL: FloraChatMessage[] = [
@@ -46,11 +47,30 @@ export function ChatbotView({
   const p = usePalette();
   const insets = useSafeAreaInsets();
   const keyboardHeight = useKeyboardHeight();
+  const { profile } = useProfile();
   const [messages, setMessages] = useState<FloraChatMessage[]>(INITIAL);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorText, setErrorText] = useState<string | null>(null);
   const scrollRef = useRef<ScrollView>(null);
+
+  /** Only what the user has actually filled in; no placeholders, no guesses. */
+  const buildUserContext = () => {
+    const parts: string[] = [];
+    if (profile.documentSummary) parts.push(profile.documentSummary);
+    if (profile.hasStoma) {
+      parts.push(`Sztómája van${profile.stomaType ? ` (${profile.stomaType})` : ''}.`);
+    }
+    if (profile.resectedSegments.length) {
+      parts.push(`Érintett bélszakaszok: ${profile.resectedSegments.join(', ')}.`);
+    }
+    if (profile.hadSurgery && profile.surgeryNotes) {
+      parts.push(`Műtétek: ${profile.surgeryNotes}`);
+    }
+    if (profile.jointSymptoms) parts.push('Ízületi panaszai vannak.');
+    if (profile.skinSymptoms) parts.push('Bőrtünetei vannak.');
+    return parts.join(' ');
+  };
 
   const send = async (text: string) => {
     const trimmed = text.trim();
@@ -69,7 +89,7 @@ export function ChatbotView({
     setLoading(true);
 
     try {
-      const reply = await requestFloraReply(conversation);
+      const reply = await requestFloraReply(conversation, buildUserContext());
       setMessages((current) => [
         ...current,
         {

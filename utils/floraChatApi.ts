@@ -53,7 +53,10 @@ async function postFloraRequest(body: FloraChatRequest) {
   }
 }
 
-export async function requestFloraReply(messages: FloraChatMessage[]) {
+export async function requestFloraReply(
+  messages: FloraChatMessage[],
+  userContext?: string,
+) {
   const recentMessages = messages.slice(-20);
   const firstUserIndex = recentMessages.findIndex(
     (message) => message.role === 'user',
@@ -62,6 +65,7 @@ export async function requestFloraReply(messages: FloraChatMessage[]) {
     messages: recentMessages
       .slice(Math.max(firstUserIndex, 0))
       .map(({ role, text }) => ({ role, text })),
+    userContext: userContext?.trim() || undefined,
   };
 
   // A timeout is nearly always a one-off latency spike, so give it one more

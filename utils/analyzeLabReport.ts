@@ -1,24 +1,20 @@
 import Constants from 'expo-constants';
-import * as DocumentPicker from 'expo-document-picker';
-import { File } from 'expo-file-system';
-import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
-import * as ImagePicker from 'expo-image-picker';
 import { Platform } from 'react-native';
 
 import type { LabAnalyzeResponse } from '@/app/analyze-lab+api';
+import {
+  pickMedicalPdf,
+  pickMedicalPhoto,
+  type PickedMedicalFile,
+} from '@/utils/pickMedicalFile';
 
 const REQUEST_TIMEOUT_MS = 60_000;
-/** Larger than the meal photo: small print has to stay readable. */
-const MAX_EDGE_PX = 1_600;
-const JPEG_QUALITY = 0.75;
 
-export type PickedLabFile = {
-  base64: string;
-  mimeType: 'image/jpeg' | 'application/pdf';
-  source: 'photo' | 'pdf';
-  /** Only set for photos, so the review screen can show a thumbnail. */
-  previewUri?: string;
-};
+// Picking is identical for lab reports and other medical documents; keeping it
+// in one place means fixes like the data-URL strip only have to happen once.
+export const pickLabPhoto = pickMedicalPhoto;
+export const pickLabPdf = pickMedicalPdf;
+export type PickedLabFile = PickedMedicalFile;
 
 function getAnalyzeEndpoint() {
   const configuredBaseUrl = process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, '');
@@ -36,87 +32,10 @@ function getAnalyzeEndpoint() {
   );
 }
 
-/** Returns null when the user backs out or denies permission. */
-export async function pickLabPhoto(
-  source: 'camera' | 'library',
-): Promise<PickedLabFile | null> {
-  const permission =
-    source === 'camera'
-      ? await ImagePicker.requestCameraPermissionsAsync()
-      : await ImagePicker.requestMediaLibraryPermissionsAsync();
-  if (!permission.granted) return null;
-
-  const options: ImagePicker.ImagePickerOptions = {
-    mediaTypes: 'images',
-    quality: 1,
-  };
-  const result =
-    source === 'camera'
-      ? await ImagePicker.launchCameraAsync(options)
-      : await ImagePicker.launchImageLibraryAsync(options);
-
-  const asset = result.canceled ? null : result.assets?.[0];
-  if (!asset?.uri) return null;
-
-  const context = ImageManipulator.manipulate(asset.uri);
-  const longestEdge = Math.max(asset.width || 0, asset.height || 0);
-  if (longestEdge > MAX_EDGE_PX) {
-    const portrait = (asset.height || 0) >= (asset.width || 0);
-    context.resize(portrait ? { height: MAX_EDGE_PX } : { width: MAX_EDGE_PX });
-  }
-  const rendered = await context.renderAsync();
-  const saved = await rendered.saveAsync({
-    format: SaveFormat.JPEG,
-    compress: JPEG_QUALITY,
-    base64: true,
-  });
-
-  if (!saved.base64) return null;
-  return {
-    base64: stripDataUrlPrefix(saved.base64),
-    mimeType: 'image/jpeg',
-    source: 'photo',
-    previewUri: saved.uri,
-  };
-}
-
-/**
- * The web picker reads files with readAsDataURL, so what comes back is a
- * "data:application/pdf;base64,..." URL rather than the bare payload. Sending
- * it whole makes the model reject the file.
- */
-function stripDataUrlPrefix(value: string) {
-  if (!value.startsWith('data:')) return value;
-  const comma = value.indexOf(',');
-  return comma === -1 ? value : value.slice(comma + 1);
-}
-
-export async function pickLabPdf(): Promise<PickedLabFile | null> {
-  const result = await DocumentPicker.getDocumentAsync({
-    type: 'application/pdf',
-    copyToCacheDirectory: true,
-    // Defaults to false on web despite what the docs say, and without it the
-    // asset only carries a blob: URI that expo-file-system cannot read there.
-    base64: true,
-  });
-  const asset = result.canceled ? null : result.assets?.[0];
-  if (!asset?.uri) return null;
-
-  // Web hands back base64 directly; native needs the file read from disk.
-  const raw = asset.base64 ?? (await new File(asset.uri).base64());
-  if (!raw) return null;
-
-  return {
-    base64: stripDataUrlPrefix(raw),
-    mimeType: 'application/pdf',
-    source: 'pdf',
-  };
-}
-
 export type LabAnalysis = Exclude<LabAnalyzeResponse, { error: string }>;
 
 export async function analyzeLabReport(
-  file: PickedLabFile,
+  file: PickedMedicalFile,
 ): Promise<LabAnalysis> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);

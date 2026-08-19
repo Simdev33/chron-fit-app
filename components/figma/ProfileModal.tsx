@@ -3,6 +3,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import {
   Camera,
   ChevronLeft,
+  FileUp,
   Package,
   Pill,
   Plus,
@@ -31,6 +32,7 @@ import {
   useKeyboardHeight,
   usePalette,
 } from '@/components/figma/ui';
+import { DocumentImportSheet } from '@/components/figma/DocumentImportSheet';
 import { AddMedicationModal } from '@/components/organizer/AddMedicationModal';
 import { AVATAR_COLORS, blue, font, violet } from '@/constants/figma';
 import { useHealthLog } from '@/context/HealthLogContext';
@@ -93,6 +95,7 @@ export function ProfileModal({
   const [segments, setSegments] = useState<string[]>(profile.resectedSegments);
   const [triggers, setTriggers] = useState<string[]>(profile.triggerFoods);
   const [addMedicationOpen, setAddMedicationOpen] = useState(false);
+  const [documentOpen, setDocumentOpen] = useState(false);
   const [noTriggers, setNoTriggers] = useState(profile.noTriggerFoods);
   const [stoma, setStoma] = useState(profile.hasStoma);
   const [stomaType, setStomaType] = useState(profile.stomaType);
@@ -423,6 +426,52 @@ export function ProfileModal({
                 })}
               </View>
             </LinearGradient>
+          </View>
+
+          {/* Importálás a kézi kitöltés előtt: itt éri a felhasználót a
+              nyolc szekciónyi orvosi adat kitöltésének terhe. */}
+          <View style={{ paddingHorizontal: 20, paddingTop: 20 }}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Dokumentum feltöltése"
+              onPress={() => setDocumentOpen(true)}
+              style={({ pressed }) => [
+                {
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 14,
+                  padding: 16,
+                  borderRadius: 16,
+                  borderWidth: 2,
+                  borderStyle: 'dashed',
+                  borderColor: p.dark ? 'rgba(167,139,250,0.4)' : '#DDD6FE',
+                  backgroundColor: p.dark
+                    ? 'rgba(167,139,250,0.08)'
+                    : '#FAF5FF',
+                  opacity: pressed ? 0.8 : 1,
+                },
+              ]}>
+              <FileUp size={22} color={violet[400]} />
+              <View style={{ flex: 1 }}>
+                <Text
+                  style={{
+                    fontFamily: font.display,
+                    fontSize: 14,
+                    color: p.text,
+                  }}>
+                  Van zárójelentésed?
+                </Text>
+                <Text
+                  style={{
+                    fontFamily: font.body,
+                    fontSize: 12,
+                    color: p.muted,
+                    marginTop: 2,
+                  }}>
+                  Töltsd fel, és kitöltöm belőle amit tudok.
+                </Text>
+              </View>
+            </Pressable>
           </View>
 
           {/* Alapadatok */}
@@ -1269,6 +1318,11 @@ export function ProfileModal({
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+      <DocumentImportSheet
+        visible={documentOpen}
+        onClose={() => setDocumentOpen(false)}
+      />
+
       <AddMedicationModal
         visible={addMedicationOpen}
         onClose={() => setAddMedicationOpen(false)}
