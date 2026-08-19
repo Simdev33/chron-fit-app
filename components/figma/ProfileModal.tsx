@@ -29,6 +29,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   GlassCard,
   SectionHeader,
+  DatedTagInput,
   TagInput,
   TogglePill,
   useKeyboardHeight,
@@ -58,6 +59,42 @@ const SEGMENTS = [
 ];
 
 const CONDITIONS = ['Crohn-betegség', 'Colitis ulcerosa', 'IBD – nem besorolt'];
+/**
+ * These four lists live in the profile and were left orphaned when the section
+ * was rebuilt around the organiser's scheduled medications. Both belong here:
+ * the list above tracks doses and times, these record what the user takes.
+ */
+const SUPPLEMENT_LISTS = [
+  {
+    key: 'prescribedMeds',
+    noneKey: 'noPrescribedMeds',
+    label: 'Felírt gyógyszerek',
+    placeholder: 'pl. Mesalamine',
+    noneLabel: 'Nem szedek felírt gyógyszert',
+  },
+  {
+    key: 'biologics',
+    noneKey: 'noBiologics',
+    label: 'Biológiai terápia',
+    placeholder: 'pl. Infliximab',
+    noneLabel: 'Nem kapok biológiai terápiát',
+  },
+  {
+    key: 'vitamins',
+    noneKey: 'noVitamins',
+    label: 'Vitaminok, ásványi anyagok',
+    placeholder: 'pl. D3-vitamin',
+    noneLabel: 'Nem szedek vitamint',
+  },
+  {
+    key: 'fitnessSupplements',
+    noneKey: 'noFitnessSupplements',
+    label: 'Fitnesz-kiegészítők',
+    placeholder: 'pl. Kreatin, fehérjepor',
+    noneLabel: 'Nem szedek fitnesz-kiegészítőt',
+  },
+] as const;
+
 const STOMA_TYPES = ['Ileosztóma', 'Kolosztóma', 'Urosztóma'];
 const FIBER_LABELS = ['Nagyon alacsony', 'Alacsony', 'Közepes', 'Magas', 'Nagyon magas'];
 const DIET_APPROACHES = [
@@ -806,6 +843,31 @@ export function ProfileModal({
             </Pressable>
           </View>
 
+          <View style={{ paddingHorizontal: 20, paddingTop: 20, gap: 18 }}>
+            {SUPPLEMENT_LISTS.map((list) => (
+              <View key={list.key} style={{ gap: 8 }}>
+                <Text style={[styles.listLabel, { color: p.text }]}>
+                  {list.label}
+                </Text>
+                <DatedTagInput
+                  tags={profile[list.key]}
+                  setTags={(next) =>
+                    updateProfile({ [list.key]: next, [list.noneKey]: false })
+                  }
+                  placeholder={list.placeholder}
+                  noneLabel={list.noneLabel}
+                  noneActive={profile[list.noneKey]}
+                  onNoneChange={(active) =>
+                    updateProfile({
+                      [list.noneKey]: active,
+                      ...(active ? { [list.key]: [] } : {}),
+                    })
+                  }
+                />
+              </View>
+            ))}
+          </View>
+
           {/* Trigger ételek */}
           <SectionHeader
             title="Trigger ételek"
@@ -1496,6 +1558,10 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     justifyContent: 'space-between',
     gap: 12,
+  },
+  listLabel: {
+    fontFamily: font.bodySemi,
+    fontSize: 13,
   },
   medicationIcon: {
     width: 40,
