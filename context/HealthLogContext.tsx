@@ -44,6 +44,31 @@ export type MealEntry = {
   tagged?: boolean;
 };
 
+/** How a measured value sits against the range the lab printed. */
+export type LabStatus = 'normal' | 'low' | 'high' | 'unknown';
+
+export type LabValue = {
+  /** Analyte name exactly as the report spells it. */
+  name: string;
+  value: number;
+  unit: string;
+  /** Bounds copied from the report, not from any built-in table. */
+  refLow?: number;
+  refHigh?: number;
+  /** The range as printed, kept so the user can check what we read. */
+  refRange?: string;
+  status: LabStatus;
+};
+
+export type LabReportEntry = {
+  id: string;
+  /** ISO date of the sample, or of the import when the report has none. */
+  date: string;
+  values: LabValue[];
+  /** Where the entry came from, for the user's own record. */
+  source: 'photo' | 'pdf' | 'manual';
+};
+
 export type AppointmentEntry = {
   id: string;
   doctor: string; // orvos vagy intézmény
@@ -84,6 +109,8 @@ type HealthLog = {
   noMeds: boolean;
   /** ISO dátum → aznap bevett gyógyszer-azonosítók */
   takenDoses: Record<string, string[]>;
+  /** Beolvasott laborleletek, legfrissebb elöl. */
+  labReports: LabReportEntry[];
 };
 
 const STORAGE_KEY = 'crohnsync-healthlog-v1';
@@ -205,6 +232,32 @@ const emptyLog: HealthLog = {
   medications: seedMedications,
   noMeds: false,
   takenDoses: {},
+  labReports: [],
+};
+
+/**
+ * Derived from the report's own bounds. Anything without a usable range stays
+ * 'unknown' rather than being guessed at — the app does not invent thresholds.
+ */
+export function deriveLabStatus(
+  value: number,
+  refLow?: number,
+  refHigh?: number,
+): LabStatus {
+  if (!Number.isFinite(value)) return 'unknown';
+  const hasLow = Number.isFinite(refLow as number);
+  const hasHigh = Number.isFinite(refHigh as number);
+  if (!hasLow && !hasHigh) return 'unknown';
+  if (hasHigh && value > (refHigh as number)) return 'high';
+  if (hasLow && value < (refLow as number)) return 'low';
+  return 'normal';
+}
+
+export const labStatusLabels: Record<LabStatus, string> = {
+  normal: 'Normál',
+  low: 'Alacsony',
+  high: 'Emelkedett',
+  unknown: 'Nincs referencia',
 };
 
 export function toIsoDate(d: Date): string {
@@ -218,6 +271,8 @@ type HealthLogContextValue = {
   ready: boolean;
   log: HealthLog;
   setMoodForToday: (mood: number) => void;
+  addLabReport: (entry: Omit<LabReportEntry, 'id'>) => void;
+  removeLabReport: (id: string) => void;
   addSymptomForToday: (
     entry: Omit<SymptomEntry, 'id' | 'time'>,
   ) => void;
@@ -267,6 +322,8 @@ export function HealthLogProvider({
             medications: normalizeMedications(parsed.medications),
             noMeds: parsed.noMeds ?? false,
             takenDoses: parsed.takenDoses ?? {},
+            // Absent for anyone whose log predates lab imports.
+            labReports: parsed.labReports ?? [],
           });
         }
       } catch {
@@ -379,6 +436,33 @@ export function HealthLogProvider({
       addSymptomForDate(toIsoDate(new Date()), entry);
     },
     [addSymptomForDate],
+  );
+
+  const addLabReport = useCallback(
+    (entry: Omit<LabReportEntry, 'id'>) => {
+      const full: LabReportEntry = {
+        ...entry,
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      };
+      update((prev) => ({
+        ...prev,
+        // Newest first, so the screens can just read the head of the list.
+        labReports: [full, ...prev.labReports].sort((a, b) =>
+          b.date.localeCompare(a.date),
+        ),
+      }));
+    },
+    [update],
+  );
+
+  const removeLabReport = useCallback(
+    (id: string) => {
+      update((prev) => ({
+        ...prev,
+        labReports: prev.labReports.filter((report) => report.id !== id),
+      }));
+    },
+    [update],
   );
 
   const addMealForToday = useCallback(
@@ -553,6 +637,8 @@ export function HealthLogProvider({
       addSymptomForToday,
       addSymptomForDate,
       saveYesterdayJournalForDate,
+      addLabReport,
+      removeLabReport,
       addMealForToday,
       removeMeal,
       addAppointment,
@@ -570,6 +656,8 @@ export function HealthLogProvider({
       addSymptomForToday,
       addSymptomForDate,
       saveYesterdayJournalForDate,
+      addLabReport,
+      removeLabReport,
       addMealForToday,
       removeMeal,
       addAppointment,

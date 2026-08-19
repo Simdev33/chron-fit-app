@@ -1,14 +1,12 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import {
-  Activity,
   ChevronRight,
-  Droplets,
   FileDown,
   FlaskConical,
-  Flame,
+  Plus,
   User,
 } from 'lucide-react-native';
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -24,55 +22,86 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BackgroundWrapper } from '@/components/BackgroundWrapper';
 import { DualLineChart } from '@/components/figma/DualLineChart';
 import { HealthCalendar } from '@/components/figma/HealthCalendar';
+import { LabReportSheet } from '@/components/figma/LabReportSheet';
 import { ProfileModal } from '@/components/figma/ProfileModal';
 import { GlassCard, usePalette } from '@/components/figma/ui';
 import { emerald400, font, fuchsia400, violet } from '@/constants/figma';
-import { CHART_DATA } from '@/constants/figmaData';
-import { useHealthLog } from '@/context/HealthLogContext';
+import {
+  labStatusLabels,
+  useHealthLog,
+  type LabStatus,
+} from '@/context/HealthLogContext';
 import { useProfile } from '@/context/ProfileContext';
 import {
   exportHealthReport,
   type ExportMode,
 } from '@/utils/exportHealthReport';
 
-const LABS = [
-  {
-    name: 'CRP',
-    value: '1,8 mg/L',
-    status: 'Normál',
-    ok: true,
-    Icon: Droplets,
-  },
-  {
-    name: 'Kalprotektin',
-    value: '112 µg/g',
-    status: 'Enyhén emelkedett',
-    ok: false,
-    Icon: FlaskConical,
-  },
-  {
-    name: 'Hemoglobin',
-    value: '13,9 g/dL',
-    status: 'Normál',
-    ok: true,
-    Icon: Activity,
-  },
-  {
-    name: 'B12-vitamin',
-    value: '480 pg/mL',
-    status: 'Normál',
-    ok: true,
-    Icon: Flame,
-  },
+const AMBER = '#FBBF24';
+const ROSE = '#FB7185';
+
+function statusStyle(status: LabStatus) {
+  if (status === 'normal') {
+    return { color: emerald400, background: 'rgba(52,211,153,0.15)' };
+  }
+  if (status === 'unknown') {
+    return {
+      color: 'rgba(255,255,255,0.5)',
+      background: 'rgba(255,255,255,0.08)',
+    };
+  }
+  return status === 'high'
+    ? { color: AMBER, background: 'rgba(251,191,36,0.15)' }
+    : { color: ROSE, background: 'rgba(251,113,133,0.15)' };
+}
+
+function formatValue(value: number) {
+  return String(value).replace('.', ',');
+}
+
+const CRP_NAME = /^crp/i;
+const MONTHS = [
+  'jan.', 'febr.', 'márc.', 'ápr.', 'máj.', 'jún.',
+  'júl.', 'aug.', 'szept.', 'okt.', 'nov.', 'dec.',
 ];
+
+function shortDate(iso: string) {
+  const [, month, day] = iso.split('-');
+  const index = Number(month) - 1;
+  return `${MONTHS[index] ?? month} ${Number(day)}.`;
+}
 
 export default function MedicalScreen() {
   const p = usePalette();
   const insets = useSafeAreaInsets();
   const [profileOpen, setProfileOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [labSheetOpen, setLabSheetOpen] = useState(false);
   const { profile } = useProfile();
   const { log } = useHealthLog();
+  // The newest report is the one worth showing; the list is kept sorted.
+  const latestLabs = log.labReports[0]?.values ?? [];
+
+  // The two series run on different clocks: symptoms are daily, labs occasional.
+  // The lab dates drive the x-axis, and each point borrows that day's pain score.
+  const chartData = useMemo(() => {
+    return [...log.labReports]
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .map((report) => {
+        const crp = report.values.find((v) => CRP_NAME.test(v.name));
+        if (!crp) return null;
+        const daySymptoms = log.symptoms[report.date] ?? [];
+        const severity = daySymptoms.length
+          ? daySymptoms.reduce((sum, e) => sum + e.pain, 0) / daySymptoms.length
+          : 0;
+        return {
+          date: shortDate(report.date),
+          severity: Math.round(severity * 10) / 10,
+          crp: crp.value,
+        };
+      })
+      .filter((point): point is NonNullable<typeof point> => point !== null);
+  }, [log.labReports, log.symptoms]);
 
   const runExport = async (mode: ExportMode) => {
     setExporting(true);
@@ -215,7 +244,23 @@ export default function MedicalScreen() {
                 Tünetek és CRP – 30 nap
               </Text>
             </View>
-            <DualLineChart data={CHART_DATA} />
+            {chartData.length >= 2 ? (
+              <DualLineChart data={chartData} />
+            ) : (
+              <View style={{ paddingVertical: 28, alignItems: 'center' }}>
+                <Text
+                  style={{
+                    fontFamily: font.body,
+                    fontSize: 12,
+                    color: p.muted,
+                    textAlign: 'center',
+                    lineHeight: 18,
+                  }}>
+                  Legalább két CRP-eredmény kell ahhoz, hogy trendet
+                  rajzolhassak. Olvass be egy leletet lentebb.
+                </Text>
+              </View>
+            )}
             <View style={styles.legendRow}>
               <View style={styles.legendItem}>
                 <View
@@ -239,12 +284,57 @@ export default function MedicalScreen() {
 
         {/* Laboreredmények */}
         <View style={{ paddingHorizontal: 20, marginBottom: 24 }}>
-          <Text style={[styles.sectionLabel, { color: p.muted }]}>
-            Legutóbbi laboreredmények
-          </Text>
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}>
+            <Text style={[styles.sectionLabel, { color: p.muted }]}>
+              Legutóbbi laboreredmények
+            </Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Új lelet hozzáadása"
+              onPress={() => setLabSheetOpen(true)}
+              style={({ pressed }) => [
+                styles.newLabBtn,
+                { opacity: pressed ? 0.8 : 1 },
+              ]}>
+              <Plus size={14} color="#FFFFFF" />
+              <Text style={styles.newLabLabel}>Új lelet</Text>
+            </Pressable>
+          </View>
+
+          {latestLabs.length === 0 ? (
+            <GlassCard style={{ padding: 20, alignItems: 'center', gap: 8 }}>
+              <FlaskConical size={26} color={violet[400]} />
+              <Text
+                style={{
+                  fontFamily: font.display,
+                  fontSize: 14,
+                  color: p.text,
+                  textAlign: 'center',
+                }}>
+                Még nincs beolvasott leleted
+              </Text>
+              <Text
+                style={{
+                  fontFamily: font.body,
+                  fontSize: 12,
+                  color: p.muted,
+                  textAlign: 'center',
+                  lineHeight: 18,
+                }}>
+                Fotózd le a papír leletet vagy válaszd ki a PDF-et, és kiolvasom
+                belőle az értékeket.
+              </Text>
+            </GlassCard>
+          ) : null}
+
           <View style={{ gap: 12 }}>
-            {LABS.map((l) => (
-              <GlassCard key={l.name} style={{ padding: 16 }}>
+            {latestLabs.map((l) => (
+              <GlassCard key={`${l.name}-${l.unit}`} style={{ padding: 16 }}>
                 <View
                   style={{
                     flexDirection: 'row',
@@ -260,7 +350,7 @@ export default function MedicalScreen() {
                       justifyContent: 'center',
                       backgroundColor: 'rgba(139,92,246,0.2)',
                     }}>
-                    <l.Icon size={18} color={violet[400]} />
+                    <FlaskConical size={18} color={violet[400]} />
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text
@@ -277,7 +367,7 @@ export default function MedicalScreen() {
                         fontFamily: font.body,
                         color: p.muted,
                       }}>
-                      {l.value}
+                      {formatValue(l.value)} {l.unit}
                     </Text>
                   </View>
                   <View
@@ -285,17 +375,15 @@ export default function MedicalScreen() {
                       paddingHorizontal: 10,
                       paddingVertical: 4,
                       borderRadius: 999,
-                      backgroundColor: l.ok
-                        ? 'rgba(52,211,153,0.15)'
-                        : 'rgba(251,191,36,0.15)',
+                      backgroundColor: statusStyle(l.status).background,
                     }}>
                     <Text
                       style={{
                         fontSize: 10,
                         fontFamily: font.bodySemi,
-                        color: l.ok ? emerald400 : '#FBBF24',
+                        color: statusStyle(l.status).color,
                       }}>
-                      {l.status}
+                      {labStatusLabels[l.status]}
                     </Text>
                   </View>
                 </View>
@@ -356,6 +444,11 @@ export default function MedicalScreen() {
           </Pressable>
         </View>
       </ScrollView>
+
+      <LabReportSheet
+        visible={labSheetOpen}
+        onClose={() => setLabSheetOpen(false)}
+      />
 
       {profileOpen ? (
         <ProfileModal
@@ -428,6 +521,20 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 999,
+  },
+  newLabBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: violet[600],
+  },
+  newLabLabel: {
+    fontFamily: font.bodySemi,
+    fontSize: 12,
+    color: '#FFFFFF',
   },
   legendLabel: {
     fontSize: 11,
