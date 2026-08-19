@@ -17,6 +17,10 @@ const KNOWLEDGE_TTL_MS = 10 * 60_000;
 // Kept well under the client's own budget so a slow lookup cannot be what
 // makes Flora time out; she falls back to her base instructions instead.
 const KNOWLEDGE_TIMEOUT_MS = 4_000;
+// 500 cut ordinary answers off mid-word; a typical reply runs 300-400 tokens,
+// so this leaves headroom for the longer ones without inviting essays.
+const MAX_OUTPUT_TOKENS = 1_100;
+const FINISH_REASON_MAX_TOKENS = 'MAX_TOKENS';
 const MEDICATION_QUERY =
   /\b(gyógyszer|gyógyszerek|tabletta|kapszula|adag|dózis|injekció|mesalazin|szteroid|biológiai terápia)\b/i;
 
@@ -39,6 +43,8 @@ Kommunikációs stílus:
 - Legyél közvetlen, barátságos, emberi és segítőkész.
 - Kerüld a merev, hivatalos, túl száraz vagy mechanikus megfogalmazásokat.
 - Úgy beszélgess, mint egy profi, de laza kolléga.
+- Tartsd a választ tömören: néhány rövid bekezdés bőven elég. Ne írj hosszú
+  felsorolásokat és heti terveket, ha a kérdés nem kifejezetten azt kéri.
 
 A beszélgetés menete:
 - A csevegés MÁR elindult egy üdvözléssel, amit a felhasználó lát a képernyőn. Amit te írsz,
@@ -160,6 +166,23 @@ const GREETING_PREFIX =
   // Longest variants first, and a lookahead instead of \b: JS word boundaries
   // are ASCII-only, so "helló" would never match after a trailing accent.
   /^[\s*_#]*(sziasztok|szia|hell[oó]|üdvözöllek|üdv|szervusz|jó reggelt|jó napot|jó estét)(?![a-záéíóöőúüű])[^\n.!?]{0,40}[.!?,…]*\s*/i;
+
+/**
+ * Walks back to the end of the last finished sentence. Returns the original if
+ * that would throw away most of the answer — a stub is worse than a cut word.
+ */
+function trimToLastCompleteSentence(text: string) {
+  const terminator = /[.!?…]["'”’)\]]?(?=\s|$)/g;
+  let end = -1;
+  let match: RegExpExecArray | null;
+  while ((match = terminator.exec(text)) !== null) {
+    end = match.index + match[0].length;
+  }
+  if (end <= 0) return text;
+
+  const trimmed = text.slice(0, end).trimEnd();
+  return trimmed.length >= text.length * 0.5 ? trimmed : text;
+}
 
 function stripGreeting(reply: string) {
   const stripped = reply.replace(GREETING_PREFIX, '').trimStart();
@@ -314,17 +337,24 @@ export async function POST(request: Request) {
       config: {
         systemInstruction,
         temperature: 0.35,
-        maxOutputTokens: 500,
+        maxOutputTokens: MAX_OUTPUT_TOKENS,
       },
     });
-    const reply = response.text?.trim();
+    const raw = response.text?.trim();
 
-    if (!reply) {
+    if (!raw) {
       return json(
         { error: 'Flóra most nem tudott választ készíteni.' },
         502,
       );
     }
+
+    // A raised cap makes truncation rare, not impossible. When it does happen
+    // the model stops mid-word, so cut back to the last finished sentence
+    // rather than showing the user a severed one.
+    const hitCap =
+      response.candidates?.[0]?.finishReason === FINISH_REASON_MAX_TOKENS;
+    const reply = hitCap ? trimToLastCompleteSentence(raw) : raw;
 
     return json({ reply: stripAttribution(stripGreeting(reply)) });
   } catch {
