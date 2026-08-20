@@ -83,6 +83,7 @@ type TutorialContextValue = {
   setTransitioning: (value: boolean) => void;
   registerTarget: (key: string, node: View | null) => void;
   measureTarget: (key: string) => Promise<TargetRect | null>;
+  restart: () => void;
 };
 
 const TutorialContext = createContext<TutorialContextValue | null>(null);
@@ -121,6 +122,17 @@ export function TutorialProvider({ children }: { children: React.ReactNode }) {
     setTargetRect(null);
     setTransitioning(false);
     updateProfile({ tutorialDone: true });
+  }, [updateProfile]);
+
+  // Replaying the tutorial cannot go through profile.tutorialDone alone,
+  // because the auto-start effect only ever fires once per launch.
+  const restart = useCallback(() => {
+    startedRef.current = true;
+    setStepIndex(0);
+    setTargetRect(null);
+    setTransitioning(true);
+    setActive(true);
+    updateProfile({ tutorialDone: false });
   }, [updateProfile]);
 
   const next = useCallback(() => {
@@ -206,6 +218,7 @@ export function TutorialProvider({ children }: { children: React.ReactNode }) {
       setTransitioning,
       registerTarget,
       measureTarget,
+      restart,
     }),
     [
       active,
@@ -216,6 +229,7 @@ export function TutorialProvider({ children }: { children: React.ReactNode }) {
       finish,
       registerTarget,
       measureTarget,
+      restart,
     ],
   );
 

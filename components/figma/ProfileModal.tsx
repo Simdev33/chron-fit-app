@@ -3,6 +3,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Sharing from 'expo-sharing';
 import {
   Camera,
+  ChevronDown,
   ChevronLeft,
   FileText,
   FileUp,
@@ -11,6 +12,7 @@ import {
   Plus,
   Syringe,
   Trash2,
+  Wrench,
 } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
 import {
@@ -37,10 +39,12 @@ import {
 } from '@/components/figma/ui';
 import { DocumentImportSheet } from '@/components/figma/DocumentImportSheet';
 import { confirmDestructive } from '@/utils/confirmDialog';
+import { resetApp } from '@/utils/devReset';
 import { deleteDocument } from '@/utils/documentStore';
 import { AddMedicationModal } from '@/components/organizer/AddMedicationModal';
 import { AVATAR_COLORS, blue, font, violet } from '@/constants/figma';
 import { useHealthLog } from '@/context/HealthLogContext';
+import { useTutorial } from '@/context/TutorialContext';
 import {
   type Diagnosis,
   diagnosisLabels,
@@ -1427,6 +1431,8 @@ export function ProfileModal({
                 </Text>
               </LinearGradient>
             </Pressable>
+
+            <DeveloperCard onClose={flushAndClose} />
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -1525,7 +1531,138 @@ function ImportedDocumentCard({
   );
 }
 
+/**
+ * Testing aids that are not part of the product. Kept visually apart from the
+ * settings above so it reads as a tool rather than something a user should
+ * reach for by accident.
+ */
+function DeveloperCard({ onClose }: { onClose: () => void }) {
+  const p = usePalette();
+  const { restart } = useTutorial();
+  const [open, setOpen] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+
+  const amber = p.dark ? '#FBBF24' : '#B45309';
+
+  const replayTutorial = () => {
+    // The overlay measures targets on the screens behind this modal, so the
+    // modal has to be out of the way before the tutorial starts.
+    onClose();
+    setTimeout(restart, 400);
+  };
+
+  const wipe = () => {
+    confirmDestructive({
+      title: 'Alkalmazás alaphelyzetbe',
+      message:
+        'Törlődik a profil, a napló, a feltöltött dokumentumok és a beállítások. Az app úgy indul újra, mintha most telepítetted volna. Ez nem vonható vissza.',
+      confirmLabel: 'Törlés és újraindítás',
+      onConfirm: () => {
+        resetApp()
+          .then((reloaded) => {
+            if (!reloaded) {
+              setNote('Az adatok törölve. Zárd be és indítsd újra az appot.');
+            }
+          })
+          .catch(() => setNote('A törlés nem sikerült.'));
+      },
+    });
+  };
+
+  return (
+    <View
+      style={[
+        styles.devCard,
+        { borderColor: amber, backgroundColor: p.dark ? 'rgba(251,191,36,0.06)' : 'rgba(180,83,9,0.05)' },
+      ]}>
+      <Pressable
+        onPress={() => setOpen((value) => !value)}
+        style={styles.devHead}>
+        <Wrench size={16} color={amber} />
+        <Text style={[styles.devTitle, { color: amber }]}>Fejlesztői mód</Text>
+        <ChevronDown
+          size={16}
+          color={amber}
+          style={{ transform: [{ rotate: open ? '180deg' : '0deg' }] }}
+        />
+      </Pressable>
+
+      {open ? (
+        <View style={{ gap: 10, marginTop: 12 }}>
+          <Pressable
+            onPress={replayTutorial}
+            style={({ pressed }) => [
+              styles.devButton,
+              { borderColor: amber },
+              pressed && { opacity: 0.7 },
+            ]}>
+            <Text style={[styles.devButtonLabel, { color: p.text }]}>
+              Bemutató újraindítása
+            </Text>
+            <Text style={[styles.devButtonHint, { color: p.muted }]}>
+              Elölről lejátssza a bevezető körvezetést.
+            </Text>
+          </Pressable>
+
+          <Pressable
+            onPress={wipe}
+            style={({ pressed }) => [
+              styles.devButton,
+              { borderColor: '#EF4444' },
+              pressed && { opacity: 0.7 },
+            ]}>
+            <Text style={[styles.devButtonLabel, { color: '#EF4444' }]}>
+              Alkalmazás alaphelyzetbe
+            </Text>
+            <Text style={[styles.devButtonHint, { color: p.muted }]}>
+              Mindent töröl és újraindítja, mint egy friss telepítés.
+            </Text>
+          </Pressable>
+
+          {note ? (
+            <Text style={[styles.devButtonHint, { color: amber }]}>{note}</Text>
+          ) : null}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
+  devCard: {
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderRadius: 16,
+    padding: 14,
+    marginTop: 4,
+  },
+  devHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  devTitle: {
+    flex: 1,
+    fontFamily: font.display,
+    fontSize: 13,
+    letterSpacing: 0.4,
+  },
+  devButton: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    gap: 3,
+  },
+  devButtonLabel: {
+    fontFamily: font.bodySemi,
+    fontSize: 14,
+  },
+  devButtonHint: {
+    fontFamily: font.body,
+    fontSize: 11,
+    lineHeight: 15,
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',

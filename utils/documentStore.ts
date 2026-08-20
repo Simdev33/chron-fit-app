@@ -51,3 +51,14 @@ export function deleteDocument(fileUri?: string) {
     // Already gone, or never written. Nothing to recover from.
   }
 }
+
+/** Removes every stored original. Used by the developer reset. */
+export function clearDocuments() {
+  if (!canStoreFiles()) return;
+  try {
+    const dir = new Directory(Paths.document, FOLDER);
+    if (dir.exists) dir.delete();
+  } catch {
+    // Nothing stored yet, or already removed.
+  }
+}
