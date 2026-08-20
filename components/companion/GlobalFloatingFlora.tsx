@@ -511,6 +511,13 @@ export function GlobalFloatingFlora() {
     bubbleOpacity.value = 0;
   }, [bubbleOpacity, bubbleScale]);
 
+  const clearSpeechIfCurrent = useCallback(
+    (generation: number) => {
+      if (speechGen.current === generation) clearSpeech();
+    },
+    [clearSpeech],
+  );
+
   const showSpeech = useCallback(
     (message: string) => {
       if (tutorialActive) return;
@@ -537,14 +544,16 @@ export function GlobalFloatingFlora() {
           0.78,
           { duration: 240, easing: Easing.in(Easing.cubic) },
           (finished) => {
-            if (finished && speechGen.current === gen) {
-              runOnJS(clearSpeech)();
-            }
+            // Reading speechGen here would capture the ref into this worklet,
+            // and Reanimated freezes what a worklet closes over — every later
+            // bump of the counter on the JS side then warns. The comparison
+            // belongs on the thread that owns the ref.
+            if (finished) runOnJS(clearSpeechIfCurrent)(gen);
           },
         );
       }, SPEECH_HOLD_MS);
     },
-    [bubbleOpacity, bubbleScale, clearSpeech, tutorialActive],
+    [bubbleOpacity, bubbleScale, clearSpeechIfCurrent, tutorialActive],
   );
 
   useEffect(() => {
