@@ -1,6 +1,6 @@
 import { router, usePathname } from 'expo-router';
 import { ChevronRight, X } from 'lucide-react-native';
-import React, { useEffect } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   InteractionManager,
   Pressable,
@@ -109,19 +109,30 @@ export function TutorialManager() {
     setTransitioning,
   ]);
 
+  const rootRef = useRef<View>(null);
+  const [origin, setOrigin] = useState({ x: 0, y: 0 });
+
+  const measureOrigin = useCallback(() => {
+    rootRef.current?.measureInWindow((x, y) => {
+      setOrigin((current) =>
+        current.x === x && current.y === y ? current : { x, y },
+      );
+    });
+  }, []);
+
   if (!active) return null;
 
   const hole = targetRect
     ? {
-        x: Math.max(4, targetRect.x - HOLE_PADDING),
-        y: Math.max(4, targetRect.y - HOLE_PADDING),
+        x: Math.max(4, targetRect.x - origin.x - HOLE_PADDING),
+        y: Math.max(4, targetRect.y - origin.y - HOLE_PADDING),
         width: Math.min(
           targetRect.width + HOLE_PADDING * 2,
-          width - Math.max(4, targetRect.x - HOLE_PADDING) - 4,
+          width - Math.max(4, targetRect.x - origin.x - HOLE_PADDING) - 4,
         ),
         height: Math.min(
           targetRect.height + HOLE_PADDING * 2,
-          height - Math.max(4, targetRect.y - HOLE_PADDING) - 4,
+          height - Math.max(4, targetRect.y - origin.y - HOLE_PADDING) - 4,
         ),
       }
     : null;
@@ -130,7 +141,11 @@ export function TutorialManager() {
     currentStep.action === 'finish' ? 'Kezdjük!' : 'Következő';
 
   return (
-    <View style={styles.root} pointerEvents="box-none">
+    <View
+      ref={rootRef}
+      onLayout={measureOrigin}
+      style={styles.root}
+      pointerEvents="box-none">
       <Svg
         width={width}
         height={height}

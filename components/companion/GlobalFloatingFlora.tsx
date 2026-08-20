@@ -121,6 +121,12 @@ const CLOSE_LABEL_BLOCK = 24;
 const CLOSE_GLOW_PAD = 36;
 const CLOSE_SCRIM_H = 260;
 const CLOSE_RISE_PX = 130;
+// The clips are portrait, so cover inside a round window crops top and bottom
+// and takes her head with it. The web path already compensated with
+// objectPosition 'center 14%'; these mirror that for the native view.
+// Raise the shift to reveal more of her head, lower it to show more torso.
+const FLORA_VIDEO_SHIFT_Y = 16;
+const FLORA_VIDEO_SCALE = 1.12;
 const SPEECH_HOLD_MS = 5000;
 const ACTION_REPLAY_MS = 30_000;
 const BUBBLE_PURPLE = 'rgba(176, 38, 255, 0.4)';
@@ -642,13 +648,24 @@ export function GlobalFloatingFlora() {
     4 +
     CLOSE_TAB_BAR_H +
     CLOSE_DOCK_GAP;
-  const closeTargetY =
-    height - closeDockBottom - CLOSE_LABEL_BLOCK - CLOSE_TARGET_SIZE / 2;
+  // Measured rather than derived. Both values land in the same coordinate
+  // space as dragX/dragY, because the dock and Flora share a parent.
+  const closeTargetX = useSharedValue(width / 2);
+  const closeTargetY = useSharedValue(
+    height - closeDockBottom - CLOSE_LABEL_BLOCK - CLOSE_TARGET_SIZE / 2,
+  );
+  const dockTop = useRef(0);
+  const buttonOffset = useRef({ x: width / 2, y: 0 });
+
+  const applyTargetCentre = useCallback(() => {
+    closeTargetX.value = buttonOffset.current.x;
+    closeTargetY.value = dockTop.current + buttonOffset.current.y;
+  }, [closeTargetX, closeTargetY]);
 
   const isOverCloseTarget = () => {
     'worklet';
-    const dx = dragX.value + FAB_W / 2 - width / 2;
-    const dy = dragY.value + FAB_H / 2 - closeTargetY;
+    const dx = dragX.value + FAB_W / 2 - closeTargetX.value;
+    const dy = dragY.value + FAB_H / 2 - closeTargetY.value;
     return Math.sqrt(dx * dx + dy * dy) < CLOSE_SNAP_DISTANCE;
   };
 
@@ -706,9 +723,7 @@ export function GlobalFloatingFlora() {
       );
     })
     .onEnd(() => {
-      const dx = dragX.value + FAB_W / 2 - width / 2;
-      const dy = dragY.value + FAB_H / 2 - closeTargetY;
-      if (Math.sqrt(dx * dx + dy * dy) < CLOSE_SNAP_DISTANCE) {
+      if (isOverCloseTarget()) {
         // Park her back at the default spot before hiding. Without this the
         // drag position stays over the drop zone, so the danger tint would
         // still be lit the next time she is brought back and grabbed.
@@ -799,12 +814,22 @@ export function GlobalFloatingFlora() {
 
       <Animated.View
         pointerEvents="none"
+        onLayout={(event) => {
+          dockTop.current = event.nativeEvent.layout.y;
+          applyTargetCentre();
+        }}
         style={[
           styles.closeDock,
           { bottom: closeDockBottom },
           closeDockStyle,
         ]}>
-        <View style={styles.closeButtonWrap}>
+        <View
+          style={styles.closeButtonWrap}
+          onLayout={(event) => {
+            const { x, y, width: w, height: h } = event.nativeEvent.layout;
+            buttonOffset.current = { x: x + w / 2, y: y + h / 2 };
+            applyTargetCentre();
+          }}>
           <Animated.View style={[styles.closeGlow, closeGlowStyle]} />
           <Animated.View style={[styles.closeButton, closeButtonStyle]}>
             <LinearGradient
@@ -1077,5 +1102,9 @@ const styles = StyleSheet.create({
   },
   nativeVideo: {
     backgroundColor: 'transparent',
+    transform: [
+      { translateY: FLORA_VIDEO_SHIFT_Y },
+      { scale: FLORA_VIDEO_SCALE },
+    ],
   },
 });
