@@ -12,6 +12,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BackgroundWrapper } from '@/components/BackgroundWrapper';
 import { DayStrip } from '@/components/figma/DayStrip';
+import { CalorieRing } from '@/components/nutrition/CalorieRing';
 import { MealSheet, WorkoutSheet } from '@/components/figma/sheets';
 import { FitnessPlanner } from '@/components/fitness/FitnessPlanner';
 import { EmptyState, GlassCard, usePalette } from '@/components/figma/ui';
@@ -19,6 +20,8 @@ import { font, violet } from '@/constants/figma';
 import { RECIPES } from '@/constants/figmaData';
 import { useFloraScene } from '@/context/FloraSceneContext';
 import { useTabBarSpacing } from '@/context/TabBarContext';
+import { useProfile } from '@/context/ProfileContext';
+import { computeNutritionTargets } from '@/utils/nutritionTargets';
 import {
   mealTypeEmoji,
   mealTypeLabels,
@@ -32,10 +35,10 @@ import {
  * values, but what is eaten now comes from the meals logged that day.
  */
 const NUTRITION = [
-  { key: 'carbsG', label: 'Szénhidrát', goal: 200, color: '#8B5CF6' },
-  { key: 'proteinG', label: 'Fehérje', goal: 80, color: '#A78BFA' },
-  { key: 'fatG', label: 'Zsír', goal: 55, color: '#C4B5FD' },
-  { key: 'fiberG', label: 'Rost', goal: 20, color: '#7C3AED' },
+  { key: 'carbsG', label: 'Szénhidrát', color: '#8B5CF6' },
+  { key: 'proteinG', label: 'Fehérje', color: '#A78BFA' },
+  { key: 'fatG', label: 'Zsír', color: '#C4B5FD' },
+  { key: 'fiberG', label: 'Rost', color: '#7C3AED' },
 ] as const;
 
 const MONTH_SHORT = [
@@ -80,6 +83,7 @@ export default function LifestyleScreen() {
     setLifestylePane(tab);
   }, [tab, setLifestylePane]);
   const { log, removeMeal } = useHealthLog();
+  const { profile } = useProfile();
   const todayIso = toIsoDate(new Date());
   const [dietDate, setDietDate] = useState(todayIso);
 
@@ -88,9 +92,14 @@ export default function LifestyleScreen() {
 
   // Only meals that carry a macro contribute; a blank field is unknown, not
   // zero, and counting it as zero would quietly understate the day.
+  // Estimated from the profile, so the bars mean something different for
+  // everyone. Null while the profile is missing what the estimate needs.
+  const targets = computeNutritionTargets(profile);
+
   const macroTotals = NUTRITION.map((macro) => ({
     ...macro,
     cur: todayMeals.reduce((sum, meal) => sum + (meal[macro.key] ?? 0), 0),
+    goal: targets?.[macro.key] ?? 0,
   }));
 
   const dietDayLabel =
@@ -171,11 +180,30 @@ export default function LifestyleScreen() {
 
         {tab === 'diet' ? (
           <View style={{ paddingHorizontal: 20, gap: 20 }}>
-            {/* Mai étkezések */}
+            {/* Étkezésnapló */}
+            <GlassCard style={{ padding: 16 }}>
+              <DayStrip
+                selectedIso={dietDate}
+                onSelect={(day) => setDietDate(day.iso)}
+                renderMarker={({ day, active }) => (
+                  <View style={styles.mealDots}>
+                    {(log.meals[day.iso] ?? []).length ? (
+                      <View
+                        style={[
+                          styles.mealDot,
+                          { backgroundColor: active ? '#fff' : violet[400] },
+                        ]}
+                      />
+                    ) : null}
+                  </View>
+                )}
+              />
+            </GlassCard>
+
             <View>
               <View style={styles.sectionRow}>
                 <Text style={[styles.cardLabel, { color: p.muted, marginBottom: 0 }]}>
-                  Mai étkezések
+                  {dietDayLabel}
                 </Text>
                 <Pressable
                   onPress={() => setMealOpen(true)}
@@ -305,6 +333,26 @@ export default function LifestyleScreen() {
               )}
             </View>
 
+            {targets ? (
+              <GlassCard style={{ padding: 20, alignItems: 'center' }}>
+                <CalorieRing consumed={todayKcal} target={targets.calories} />
+                <Text style={[styles.estimateNote, { color: p.faint }]}>
+                  Becslés a korod, testsúlyod és magasságod alapján, enyhe
+                  aktivitással számolva. Nem fogyókúrás cél.
+                </Text>
+              </GlassCard>
+            ) : (
+              <GlassCard style={{ padding: 20 }}>
+                <Text style={[styles.cardLabel, { color: p.muted }]}>
+                  Napi kalóriakeret
+                </Text>
+                <Text style={[styles.estimateNote, { color: p.muted, marginTop: 0 }]}>
+                  Add meg a korod, testsúlyod és magasságod a profilodban, és
+                  kiszámoljuk a napi keretedet meg a tápanyagcéljaidat.
+                </Text>
+              </GlassCard>
+            )}
+
             {/* Napi bevitt tápanyagok */}
             <GlassCard style={{ padding: 20 }}>
               <Text style={[styles.cardLabel, { color: p.muted }]}>
@@ -328,7 +376,7 @@ export default function LifestyleScreen() {
                           fontFamily: font.body,
                           color: p.muted,
                         }}>
-                        {n.cur}g / {n.goal}g
+                        {n.cur}g{n.goal ? ` / ${n.goal}g` : ''}
                       </Text>
                     </View>
                     <View
@@ -344,7 +392,11 @@ export default function LifestyleScreen() {
                         style={{
                           height: '100%',
                           borderRadius: 999,
-                          width: `${Math.min((n.cur / n.goal) * 100, 100)}%`,
+                          width: `${
+                            n.goal
+                              ? Math.min((n.cur / n.goal) * 100, 100)
+                              : 0
+                          }%`,
                           backgroundColor: n.color,
                         }}
                       />
@@ -468,6 +520,23 @@ export default function LifestyleScreen() {
 }
 
 const styles = StyleSheet.create({
+  estimateNote: {
+    fontFamily: font.body,
+    fontSize: 11,
+    lineHeight: 15,
+    marginTop: 10,
+    textAlign: 'center',
+  },
+  mealDots: {
+    height: 5,
+    marginTop: 4,
+    justifyContent: 'center',
+  },
+  mealDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+  },
   segment: {
     paddingVertical: 10,
     borderRadius: 12,
