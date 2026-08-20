@@ -2,7 +2,6 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import {
   Bell,
-  CheckCircle2,
   ChevronRight,
   Circle,
   Clock,
@@ -49,9 +48,11 @@ import {
   fuchsia400,
   violet,
 } from '@/constants/figma';
+import type { AppointmentEntry } from '@/context/HealthLogContext';
 import {
   MOOD_EMOJI,
   MOOD_LABELS,
+  isMedicationDueOn,
   medicationDoseKey,
   toIsoDate,
   useHealthLog,
@@ -108,6 +109,55 @@ const HINT_TAIL_W = 14;
 const HINT_TAIL_RIGHT =
   2 * (HEADER_BTN_W + HEADER_BTN_GAP) + HEADER_BTN_W / 2 - HINT_TAIL_W / 2;
 
+/** Marks a dose whose time has already gone by. */
+const OVERDUE = '#FBBF24';
+
+const MONTH_SHORT = [
+  'jan.', 'febr.', 'márc.', 'ápr.', 'máj.', 'jún.',
+  'júl.', 'aug.', 'szept.', 'okt.', 'nov.', 'dec.',
+];
+
+/** "Ma" and "Holnap" read better than a date this close to now. */
+function formatAppointmentDay(appointment: AppointmentEntry, now: Date) {
+  const [year, month, day] = appointment.date.split('-').map(Number);
+  if (!year || !month || !day) return appointment.date;
+
+  const target = new Date(year, month - 1, day);
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const days = Math.round(
+    (target.getTime() - today.getTime()) / (24 * 60 * 60 * 1000),
+  );
+  if (days === 0) return 'Ma';
+  if (days === 1) return 'Holnap';
+  return `${MONTH_SHORT[month - 1]} ${day}.`;
+}
+
+/** "8:00" and "08:00" both mean the same minute of the day. */
+function minutesOfDay(time: string) {
+  const [hours, minutes] = time.split(':');
+  return Number(hours) * 60 + Number(minutes ?? 0);
+}
+
+/**
+ * When an appointment falls, as a timestamp. An all-day entry counts as
+ * upcoming until that day is over, rather than from midnight.
+ */
+function appointmentTime(appointment: AppointmentEntry) {
+  const [year, month, day] = appointment.date.split('-').map(Number);
+  if (!year || !month || !day) return null;
+  if (appointment.allDay) {
+    return new Date(year, month - 1, day, 23, 59).getTime();
+  }
+  const [hours, minutes] = (appointment.time ?? '0:00').split(':');
+  return new Date(
+    year,
+    month - 1,
+    day,
+    Number(hours) || 0,
+    Number(minutes) || 0,
+  ).getTime();
+}
+
 export default function HomeScreen() {
   const p = usePalette();
   const insets = useSafeAreaInsets();
@@ -142,7 +192,8 @@ export default function HomeScreen() {
   const remission = profile.phase === 'remission';
 
   const { log, setMoodForToday, takeMedicationDose } = useHealthLog();
-  const todayIso = toIsoDate(new Date());
+  const now = new Date();
+  const todayIso = toIsoDate(now);
   const yesterday = new Date();
   yesterday.setDate(yesterday.getDate() - 1);
   const yesterdayIso = toIsoDate(yesterday);
@@ -153,16 +204,46 @@ export default function HomeScreen() {
       entry.medicationCompliance !== undefined,
   );
   const mood = log.moods[todayIso] ?? null;
-  const nextMed = log.medications.find(
-    (medication) =>
-      medication.type !== 'biologic' && medication.times.length > 0,
-  );
-  const nextMedTime = nextMed?.times[0] ?? '08:00';
-  const nextMedTaken = nextMed
-    ? (log.takenDoses?.[todayIso] ?? []).includes(
-        medicationDoseKey(nextMed.id, nextMedTime),
-      )
-    : false;
+  // Picking times[0] meant the card still advertised the 8:00 dose at half
+  // past nine. Today's doses are walked in order and the first one still
+  // outstanding wins, so a missed dose stays on screen -- flagged as late
+  // rather than quietly replaced by the next one.
+  const nowMinutes = now.getHours() * 60 + now.getMinutes();
+  const takenToday = log.takenDoses?.[todayIso] ?? [];
+
+  const nextDose = log.medications
+    .filter(
+      (medication) =>
+        medication.type !== 'biologic' &&
+        medication.times.length > 0 &&
+        isMedicationDueOn(medication, now),
+    )
+    .flatMap((medication) =>
+      medication.times.map((time) => ({
+        medication,
+        time,
+        minutes: minutesOfDay(time),
+        taken: takenToday.includes(medicationDoseKey(medication.id, time)),
+      })),
+    )
+    .filter((dose) => !dose.taken)
+    .sort((a, b) => a.minutes - b.minutes)[0];
+
+  const nextMed = nextDose?.medication;
+  const nextMedTime = nextDose?.time ?? '';
+  const nextMedLate = nextDose ? nextDose.minutes < nowMinutes : false;
+
+  // The blood draw used to be typed straight into the markup, so it announced
+  // the same August date for ever. It comes from the real list now, and only
+  // while it is still ahead of us.
+  const nextAppointment = log.appointments
+    .filter((appointment) => {
+      const when = appointmentTime(appointment);
+      return when !== null && when >= now.getTime();
+    })
+    .sort(
+      (a, b) => (appointmentTime(a) ?? 0) - (appointmentTime(b) ?? 0),
+    )[0];
   const [sheet, setSheet] = useState<SheetKind>(null);
   const [profileOpen, setProfileOpen] = useState(false);
 
@@ -472,107 +553,120 @@ export default function HomeScreen() {
         </View>
 
         {/* Közelgő */}
-        <View style={{ paddingHorizontal: 20 }}>
-          <Text style={[styles.sectionLabel, { color: p.muted }]}>Közelgő</Text>
-          <GlassCard style={{ padding: 16 }}>
-            <View style={styles.upcomingRow}>
-              <View
-                style={[
-                  styles.upcomingIcon,
-                  { backgroundColor: 'rgba(139,92,246,0.5)' },
-                ]}>
-                <Clock size={18} color={violet[400]} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text
-                  style={{
-                    fontFamily: font.display,
-                    fontSize: 14,
-                    color: p.text,
-                  }}>
-                  Vérvétel
-                </Text>
-                <Text
-                  style={{ fontSize: 12, fontFamily: font.body, color: p.muted }}>
-                  CBC · CRP · Kalprotektin
-                </Text>
-              </View>
-              <View style={{ alignItems: 'flex-end' }}>
-                <Text
-                  style={{
-                    fontSize: 12,
-                    fontFamily: font.display,
-                    color: violet[400],
-                  }}>
-                  aug. 16.
-                </Text>
-                <Text
-                  style={{ fontSize: 12, fontFamily: font.body, color: p.muted }}>
-                  8:00
-                </Text>
-              </View>
-            </View>
-            {nextMed ? (
-              <View
-                style={[
-                  styles.upcomingRow,
-                  {
-                    marginTop: 12,
-                    paddingTop: 12,
-                    borderTopWidth: 1,
-                    borderTopColor: p.divider,
-                  },
-                ]}>
+        {nextAppointment || nextMed ? (
+          <View style={{ paddingHorizontal: 20 }}>
+            <Text style={[styles.sectionLabel, { color: p.muted }]}>
+              Közelgő
+            </Text>
+            <GlassCard style={{ padding: 16 }}>
+              {nextAppointment ? (
+                <View style={styles.upcomingRow}>
+                  <View
+                    style={[
+                      styles.upcomingIcon,
+                      { backgroundColor: 'rgba(139,92,246,0.5)' },
+                    ]}>
+                    <Clock size={18} color={violet[400]} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text
+                      style={{
+                        fontFamily: font.display,
+                        fontSize: 14,
+                        color: p.text,
+                      }}>
+                      {nextAppointment.doctor}
+                    </Text>
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        fontFamily: font.body,
+                        color: p.muted,
+                      }}>
+                      {nextAppointment.exam}
+                    </Text>
+                  </View>
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        fontFamily: font.display,
+                        color: violet[400],
+                      }}>
+                      {formatAppointmentDay(nextAppointment, now)}
+                    </Text>
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        fontFamily: font.body,
+                        color: p.muted,
+                      }}>
+                      {nextAppointment.allDay
+                        ? 'egész nap'
+                        : nextAppointment.time}
+                    </Text>
+                  </View>
+                </View>
+              ) : null}
+              {nextMed ? (
                 <View
                   style={[
-                    styles.upcomingIcon,
-                    { backgroundColor: 'rgba(217,70,239,0.4)' },
+                    styles.upcomingRow,
+                    nextAppointment && {
+                      marginTop: 12,
+                      paddingTop: 12,
+                      borderTopWidth: 1,
+                      borderTopColor: p.divider,
+                    },
                   ]}>
-                  <Pill size={18} color={fuchsia400} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text
-                    style={{
-                      fontFamily: font.display,
-                      fontSize: 14,
-                      color: p.text,
-                    }}>
-                    {nextMed.name} {nextMed.dose}
-                  </Text>
-                  <Text
-                    style={{
-                      fontSize: 12,
-                      fontFamily: font.body,
-                      color: p.muted,
-                    }}>
-                    Ma {nextMedTime} · {nextMed.times.length} időpont
-                  </Text>
-                </View>
-                <Pressable
-                  onPress={() => takeMedicationDose(nextMed.id, nextMedTime)}
-                  style={({ pressed }) => [
-                    styles.checkBtn,
-                    nextMedTaken
-                      ? { backgroundColor: violet[500] }
-                      : {
-                          backgroundColor: p.chipBg,
-                          borderWidth: 1,
-                          borderColor: p.dark
+                  <View
+                    style={[
+                      styles.upcomingIcon,
+                      { backgroundColor: 'rgba(217,70,239,0.4)' },
+                    ]}>
+                    <Pill size={18} color={fuchsia400} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text
+                      style={{
+                        fontFamily: font.display,
+                        fontSize: 14,
+                        color: p.text,
+                      }}>
+                      {nextMed.name} {nextMed.dose}
+                    </Text>
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        fontFamily: font.body,
+                        color: nextMedLate ? OVERDUE : p.muted,
+                      }}>
+                      {nextMedLate ? 'Elmaradt' : 'Ma'} {nextMedTime} ·{' '}
+                      {nextMed.times.length} időpont
+                    </Text>
+                  </View>
+                  <Pressable
+                    onPress={() => takeMedicationDose(nextMed.id, nextMedTime)}
+                    style={({ pressed }) => [
+                      styles.checkBtn,
+                      {
+                        backgroundColor: p.chipBg,
+                        borderWidth: 1,
+                        borderColor: nextMedLate
+                          ? OVERDUE
+                          : p.dark
                             ? 'rgba(255,255,255,0.15)'
                             : '#E9D5FF',
-                        },
-                    pressed && { transform: [{ scale: 0.9 }] },
-                  ]}>
-                  {nextMedTaken ? (
-                    <CheckCircle2 size={16} color="#fff" />
-                  ) : (
-                    <Circle size={16} color={p.muted} />
-                  )}
-                </Pressable>
-              </View>
-            ) : null}
-          </GlassCard>
-        </View>
+                      },
+                      pressed && { transform: [{ scale: 0.9 }] },
+                    ]}>
+                    <Circle size={16} color={nextMedLate ? OVERDUE : p.muted} />
+                  </Pressable>
+                </View>
+              ) : null}
+            </GlassCard>
+          </View>
+        ) : null}
       </ScrollView>
 
       {profile.floraHidden ? (
