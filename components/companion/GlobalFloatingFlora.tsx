@@ -122,11 +122,11 @@ const CLOSE_GLOW_PAD = 36;
 const CLOSE_SCRIM_H = 260;
 const CLOSE_RISE_PX = 130;
 // The clips are portrait, so cover inside a round window crops top and bottom
-// and takes her head with it. The web path already compensated with
-// objectPosition 'center 14%'; these mirror that for the native view.
-// Raise the shift to reveal more of her head, lower it to show more torso.
-const FLORA_VIDEO_SHIFT_Y = 16;
-const FLORA_VIDEO_SCALE = 1.12;
+// and takes her head with it. Extending the view below the circle biases that
+// crop toward the top of the clip, where her head is. Moving the view with a
+// transform instead just slid it down and left the black backdrop showing.
+// Raise this to reveal more of her head, lower it to show more torso.
+const FLORA_VIDEO_EXTEND_Y = 36;
 const SPEECH_HOLD_MS = 5000;
 const ACTION_REPLAY_MS = 30_000;
 const BUBBLE_PURPLE = 'rgba(176, 38, 255, 0.4)';
@@ -642,6 +642,16 @@ export function GlobalFloatingFlora() {
     showFloraHint();
   }, [showFloraHint, updateProfile]);
 
+  // Park her back at the default spot while she is out of sight. Leaving the
+  // drag position over the drop zone would light the danger tint the moment
+  // she is brought back and grabbed again.
+  useEffect(() => {
+    if (!profile.floraHidden) return;
+    dragX.value = initialX;
+    dragY.value = initialY;
+    setEdge('right');
+  }, [dragX, dragY, initialX, initialY, profile.floraHidden]);
+
   // The dock rises from the bottom edge, clear of the floating tab bar.
   const closeDockBottom =
     Math.max(insets.bottom, CLOSE_TAB_BAR_INSET) +
@@ -724,12 +734,9 @@ export function GlobalFloatingFlora() {
     })
     .onEnd(() => {
       if (isOverCloseTarget()) {
-        // Park her back at the default spot before hiding. Without this the
-        // drag position stays over the drop zone, so the danger tint would
-        // still be lit the next time she is brought back and grabbed.
-        dragX.value = initialX;
-        dragY.value = initialY;
-        runOnJS(setSnappedEdge)('right');
+        // Resetting her position here made her jump back to the edge for a
+        // frame before vanishing. The reset now happens once she is hidden,
+        // where nobody can see it.
         runOnJS(hideFlora)();
         return;
       }
@@ -1102,9 +1109,11 @@ const styles = StyleSheet.create({
   },
   nativeVideo: {
     backgroundColor: 'transparent',
-    transform: [
-      { translateY: FLORA_VIDEO_SHIFT_Y },
-      { scale: FLORA_VIDEO_SCALE },
-    ],
+    top: 0,
+    left: 0,
+    right: 0,
+    // Taller than the window it is seen through, so nothing can uncover the
+    // backdrop and the visible part is the top of the clip.
+    bottom: -FLORA_VIDEO_EXTEND_Y,
   },
 });
