@@ -1,7 +1,5 @@
-import { Asset } from 'expo-asset';
-import { useEventListener } from 'expo';
-import { useVideoPlayer, VideoView } from 'expo-video';
 import { BlurView } from 'expo-blur';
+import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { usePathname, useRouter, useSegments } from 'expo-router';
 import { X } from 'lucide-react-native';
@@ -57,24 +55,24 @@ const FLORA_CLIPS: Record<
   Record<FloraVideoMode, number>
 > = {
   alap: {
-    action: require('../../assets/flora/flora_assistant_action.mp4'),
-    idle: require('../../assets/flora/flora_assistant_idle.mp4'),
+    action: require('../../assets/flora/flora_assistant_action.webp'),
+    idle: require('../../assets/flora/flora_assistant_idle.webp'),
   },
   sef: {
-    action: require('../../assets/flora/flora_chef_action.mp4'),
-    idle: require('../../assets/flora/flora_chef_idle.mp4'),
+    action: require('../../assets/flora/flora_chef_action.webp'),
+    idle: require('../../assets/flora/flora_chef_idle.webp'),
   },
   fitnesz: {
-    action: require('../../assets/flora/flora_gym_action.mp4'),
-    idle: require('../../assets/flora/flora_gym_idle.mp4'),
+    action: require('../../assets/flora/flora_gym_action.webp'),
+    idle: require('../../assets/flora/flora_gym_idle.webp'),
   },
   titkarno: {
-    action: require('../../assets/flora/flora_assistant_action.mp4'),
-    idle: require('../../assets/flora/flora_assistant_idle.mp4'),
+    action: require('../../assets/flora/flora_assistant_action.webp'),
+    idle: require('../../assets/flora/flora_assistant_idle.webp'),
   },
   nover: {
-    action: require('../../assets/flora/flora_nurse_action.mp4'),
-    idle: require('../../assets/flora/flora_nurse_idle.mp4'),
+    action: require('../../assets/flora/flora_nurse_action.webp'),
+    idle: require('../../assets/flora/flora_nurse_idle.webp'),
   },
 };
 
@@ -134,91 +132,13 @@ const SPEECH_HOLD_MS = 5000;
 const ACTION_REPLAY_MS = 30_000;
 const BUBBLE_PURPLE = 'rgba(176, 38, 255, 0.4)';
 
-function getAssetUri(mod: unknown): string | undefined {
-  if (typeof mod === 'string' && mod.length > 0) return mod;
-  if (mod && typeof mod === 'object') {
-    const rec = mod as { uri?: string; default?: string };
-    if (typeof rec.uri === 'string' && rec.uri.length > 0) return rec.uri;
-    if (typeof rec.default === 'string' && rec.default.length > 0) {
-      return rec.default;
-    }
-  }
-  try {
-    const packed = Asset.fromModule(mod as number);
-    return packed.localUri || packed.uri || undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-const WEB_VIDEO_STYLE: React.CSSProperties = {
-  position: 'absolute',
-  top: 0,
-  left: 0,
-  width: '100%',
-  height: '100%',
-  objectFit: 'cover',
-  objectPosition: 'center 14%',
-  transform: 'scale(1.12)',
-  background: 'transparent',
-  backgroundColor: 'transparent',
-  border: 'none',
-  outline: 'none',
-  display: 'block',
-};
-
-/** Render the raw clip directly, without chroma keying or canvas processing. */
-function AlphaVideo({
-  source,
-  loop,
-  onEnded,
-}: {
-  source: number;
-  loop: boolean;
-  onEnded: () => void;
-}) {
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const uri = getAssetUri(source);
-
-  const tryPlay = (node: HTMLVideoElement) => {
-    node.muted = true;
-    node.defaultMuted = true;
-    node.loop = loop;
-    node.playsInline = true;
-    node.setAttribute('playsinline', 'true');
-    node.setAttribute('webkit-playsinline', 'true');
-    node.style.background = 'transparent';
-    node.style.backgroundColor = 'transparent';
-    node.play()?.catch(() => {
-      node.muted = true;
-      node.play().catch(onEnded);
-    });
-  };
-
-  if (Platform.OS !== 'web' || !uri) return null;
-
-  return (
-    <video
-      ref={(node: HTMLVideoElement | null) => {
-        videoRef.current = node;
-        if (node) tryPlay(node);
-      }}
-      src={uri}
-      muted
-      autoPlay
-      loop={loop}
-      playsInline
-      preload="auto"
-      disablePictureInPicture
-      onLoadedData={(e: { currentTarget: HTMLVideoElement }) => {
-        tryPlay(e.currentTarget);
-      }}
-      onEnded={onEnded}
-      onError={onEnded}
-      style={WEB_VIDEO_STYLE}
-    />
-  );
-}
+/**
+ * Her clips are animated WebP now, so they are just images: no player, no
+ * surface, no shutter blanking the circle between outfits, and one code path
+ * for every platform. The trade is that an animated image reports nothing
+ * about its playback, so the end of an action clip has to be timed.
+ */
+const ACTION_CLIP_MS = 4000;
 
 function FloraVideo({
   look,
@@ -230,153 +150,23 @@ function FloraVideo({
   onActionEnded: () => void;
 }) {
   const source = FLORA_CLIPS[look][mode];
-  const loop = mode === 'idle';
-
-  if (Platform.OS === 'web') {
-    return (
-      <AlphaVideo
-        key={`${look}-${mode}`}
-        source={source}
-        loop={loop}
-        onEnded={onActionEnded}
-      />
-    );
-  }
-
-  return (
-    <NativeFloraVideo source={source} loop={loop} onEnded={onActionEnded} />
-  );
-}
-
-function NativeFloraVideo({
-  source,
-  loop,
-  onEnded,
-}: {
-  source: number;
-  loop: boolean;
-  onEnded: () => void;
-}) {
-  // Flora's clip swaps whenever she changes look or flips between idle and
-  // action, and a tab change does both in a row. Swapping the source on a
-  // single player leaves its surface empty until the new clip decodes a frame,
-  // and the stage behind it is nearly black, so the orb blinked every time.
-  //
-  // Two players take turns instead. The next clip loads into the hidden one
-  // and only becomes visible once it has actually drawn something, while the
-  // outgoing one stays on screen holding its last frame. Both are created once
-  // and never released, which is what kept the old single-player version from
-  // handing the view an already-released object.
-  const initialSource = useRef(source).current;
-
-  const playerA = useVideoPlayer(initialSource, (instance) => {
-    instance.loop = loop;
-    instance.muted = true;
-    instance.play();
-  });
-  const playerB = useVideoPlayer(initialSource, (instance) => {
-    instance.loop = loop;
-    instance.muted = true;
-  });
-
-  const [active, setActive] = useState<'a' | 'b'>('a');
-  const activeRef = useRef<'a' | 'b'>('a');
-  const pending = useRef<'a' | 'b' | null>(null);
-  const appliedSource = useRef(initialSource);
-  const swapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const reveal = useCallback((slot: 'a' | 'b') => {
-    if (pending.current !== slot) return;
-    pending.current = null;
-    if (swapTimer.current) {
-      clearTimeout(swapTimer.current);
-      swapTimer.current = null;
-    }
-    activeRef.current = slot;
-    setActive(slot);
-  }, []);
 
   useEffect(() => {
-    const current = activeRef.current === 'a' ? playerA : playerB;
-    current.loop = loop;
-
-    if (appliedSource.current === source) return;
-    appliedSource.current = source;
-
-    const slot = activeRef.current === 'a' ? 'b' : 'a';
-    const next = slot === 'a' ? playerA : playerB;
-    pending.current = slot;
-    next.loop = loop;
-
-    next
-      .replaceAsync(source)
-      .then(() => {
-        next.play();
-        // onFirstFrameRender is the real cue, but a clip that never reports one
-        // must not leave her frozen on the previous outfit for good.
-        if (swapTimer.current) clearTimeout(swapTimer.current);
-        swapTimer.current = setTimeout(() => reveal(slot), 700);
-      })
-      .catch(() => {
-        pending.current = null;
-        // A clip that will not load should not strand her mid-animation.
-        onEnded();
-      });
-  }, [loop, onEnded, playerA, playerB, reveal, source]);
-
-  // The one that is no longer shown keeps its last frame but stops decoding.
-  useEffect(() => {
-    const previous = active === 'a' ? playerB : playerA;
-    previous.pause();
-  }, [active, playerA, playerB]);
-
-  useEffect(
-    () => () => {
-      if (swapTimer.current) clearTimeout(swapTimer.current);
-    },
-    [],
-  );
-
-  useEventListener(playerA, 'playToEnd', () => {
-    if (activeRef.current === 'a' && !loop) onEnded();
-  });
-  useEventListener(playerB, 'playToEnd', () => {
-    if (activeRef.current === 'b' && !loop) onEnded();
-  });
-
-  useEventListener(playerA, 'statusChange', ({ status }) => {
-    if (status === 'error' && activeRef.current === 'a') onEnded();
-  });
-  useEventListener(playerB, 'statusChange', ({ status }) => {
-    if (status === 'error' && activeRef.current === 'b') onEnded();
-  });
-
-  const slotProps = {
-    style: [StyleSheet.absoluteFill, styles.nativeVideo],
-    contentFit: 'cover' as const,
-    nativeControls: false,
-    // Without this the shutter blanks the view to black before the first frame.
-    useExoShutter: false,
-    // A SurfaceView draws in its own layer, so it cannot be stacked or faded
-    // and it lags behind the orb while she is dragged.
-    surfaceType: 'textureView' as const,
-  };
+    if (mode !== 'action') return;
+    const timer = setTimeout(onActionEnded, ACTION_CLIP_MS);
+    return () => clearTimeout(timer);
+  }, [look, mode, onActionEnded]);
 
   return (
-    <>
-      <VideoView
-        {...slotProps}
-        player={playerA}
-        style={[slotProps.style, active === 'a' ? null : styles.hiddenSlot]}
-        onFirstFrameRender={() => reveal('a')}
-      />
-      <VideoView
-        {...slotProps}
-        player={playerB}
-        style={[slotProps.style, active === 'b' ? null : styles.hiddenSlot]}
-        onFirstFrameRender={() => reveal('b')}
-      />
-    </>
+    <Image
+      source={source}
+      style={[StyleSheet.absoluteFill, styles.nativeVideo]}
+      contentFit="cover"
+      // Swapping the source in place keeps the previous outfit on screen until
+      // the next one is ready. A recyclingKey would blank it first, which is
+      // the very flicker this replaced.
+      cachePolicy="memory-disk"
+    />
   );
 }
 
@@ -1242,9 +1032,6 @@ const styles = StyleSheet.create({
     borderTopColor: 'transparent',
     borderBottomWidth: 9,
     borderBottomColor: 'rgba(18, 10, 36, 0.92)',
-  },
-  hiddenSlot: {
-    opacity: 0,
   },
   nativeVideo: {
     backgroundColor: 'transparent',
