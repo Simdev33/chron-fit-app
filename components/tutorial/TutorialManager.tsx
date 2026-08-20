@@ -2,13 +2,13 @@ import { router, usePathname } from 'expo-router';
 import { ChevronRight, X } from 'lucide-react-native';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  InteractionManager,
   Pressable,
   StyleSheet,
   Text,
   useWindowDimensions,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Defs, Mask, Rect } from 'react-native-svg';
 
 import { font, violet } from '@/constants/figma';
@@ -34,7 +34,8 @@ const POST_NAV_DELAY_MS = 180;
 
 export function TutorialManager() {
   const pathname = usePathname();
-  const { width, height } = useWindowDimensions();
+  const windowSize = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const {
     active,
     currentStep,
@@ -89,13 +90,14 @@ export function TutorialManager() {
       retryTimer = setTimeout(measure, POST_NAV_DELAY_MS);
     };
 
-    const interaction =
-      InteractionManager.runAfterInteractions(startMeasurement);
+    // Waiting a frame lets the navigation commit before the first measure.
+    // InteractionManager used to do this, but it is deprecated now.
+    const frame = requestAnimationFrame(startMeasurement);
     fallbackTimer = setTimeout(startMeasurement, POST_NAV_DELAY_MS);
 
     return () => {
       cancelled = true;
-      interaction.cancel();
+      cancelAnimationFrame(frame);
       if (retryTimer) clearTimeout(retryTimer);
       if (fallbackTimer) clearTimeout(fallbackTimer);
     };
@@ -111,6 +113,7 @@ export function TutorialManager() {
 
   const rootRef = useRef<View>(null);
   const [origin, setOrigin] = useState({ x: 0, y: 0 });
+  const [size, setSize] = useState({ width: 0, height: 0 });
 
   const measureOrigin = useCallback(() => {
     rootRef.current?.measureInWindow((x, y) => {
@@ -120,7 +123,21 @@ export function TutorialManager() {
     });
   }, []);
 
+  // The origin can move between steps -- navigating changes what the system
+  // bars overlay -- so it is re-read every time a new target is measured
+  // rather than once on mount.
+  useEffect(() => {
+    if (!active || !targetRect) return;
+    measureOrigin();
+  }, [active, measureOrigin, targetRect]);
+
   if (!active) return null;
+
+  // The overlay is only as big as its own box. Sizing the mask from the window
+  // instead left the backdrop short and clamped the spotlight against the
+  // wrong bottom edge, which is what pulled the frame off the tab bar.
+  const width = size.width || windowSize.width;
+  const height = size.height || windowSize.height;
 
   const hole = targetRect
     ? {
@@ -143,7 +160,15 @@ export function TutorialManager() {
   return (
     <View
       ref={rootRef}
-      onLayout={measureOrigin}
+      onLayout={(event) => {
+        const { width: w, height: h } = event.nativeEvent.layout;
+        setSize((current) =>
+          current.width === w && current.height === h
+            ? current
+            : { width: w, height: h },
+        );
+        measureOrigin();
+      }}
       style={styles.root}
       pointerEvents="box-none">
       <Svg
@@ -206,7 +231,9 @@ export function TutorialManager() {
         onPress={next}
       />
 
-      <View style={styles.controls} pointerEvents="box-none">
+      <View
+        style={[styles.controls, { top: insets.top + 12 }]}
+        pointerEvents="box-none">
         <View style={styles.progressPill}>
           <Text style={styles.progressText}>
             {stepIndex + 1}/{tutorialSteps.length}
@@ -260,7 +287,6 @@ const styles = StyleSheet.create({
   },
   controls: {
     position: 'absolute',
-    top: 16,
     left: 16,
     right: 16,
     flexDirection: 'row',

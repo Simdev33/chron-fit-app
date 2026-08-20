@@ -230,7 +230,14 @@ function FloraVideo({
   const loop = mode === 'idle';
 
   if (Platform.OS === 'web') {
-    return <AlphaVideo source={source} loop={loop} onEnded={onActionEnded} />;
+    return (
+      <AlphaVideo
+        key={`${look}-${mode}`}
+        source={source}
+        loop={loop}
+        onEnded={onActionEnded}
+      />
+    );
   }
 
   return (
@@ -905,7 +912,6 @@ export function GlobalFloatingFlora() {
             style={styles.avatar}>
             <View style={styles.stage}>
               <FloraVideo
-                key={`${targetLook}-${videoMode}`}
                 look={targetLook}
                 mode={videoMode}
                 onActionEnded={finishActionVideo}
