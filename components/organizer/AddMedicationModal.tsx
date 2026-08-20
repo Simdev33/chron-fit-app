@@ -14,6 +14,7 @@ import {
   View,
   type ViewStyle,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -175,6 +176,9 @@ export function AddMedicationModal({
   onClose: () => void;
   onAdd: (item: NewMedicationInput) => void;
 }) {
+  // Same as the sheets: the modal draws under the system bar, so the last
+  // control needs clearance. Devices without a bar report zero.
+  const insets = useSafeAreaInsets();
   const [form, setForm] = useState<FormState>(createInitialForm);
 
   const update = <K extends keyof FormState,>(
@@ -284,7 +288,10 @@ export function AddMedicationModal({
               <ScrollView
                 showsVerticalScrollIndicator={false}
                 keyboardShouldPersistTaps="handled"
-                contentContainerStyle={styles.content}>
+                contentContainerStyle={[
+                  styles.content,
+                  { paddingBottom: insets.bottom + 24 },
+                ]}>
                 <View style={styles.section}>
                   <Text style={styles.sectionTitle}>Alapadatok</Text>
                   <FloatingInput

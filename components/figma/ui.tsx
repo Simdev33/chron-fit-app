@@ -15,6 +15,8 @@ import {
   ViewStyle,
 } from 'react-native';
 
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
 import { Palette, font, getPalette, violet } from '@/constants/figma';
 import type { SupplementEntry } from '@/context/ProfileContext';
 import { useAppTheme } from '@/context/ThemeContext';
@@ -91,6 +93,12 @@ export function BottomSheet({
 }) {
   const p = usePalette();
   const keyboardHeight = useKeyboardHeight();
+  const insets = useSafeAreaInsets();
+  // The modal is navigationBarTranslucent, so it draws under the system bar and
+  // the last control in the sheet ends up behind it. Devices without a bar
+  // report a zero inset, so this costs them nothing. While the keyboard is up
+  // the wrapper already lifts the sheet clear, and the bar sits behind it.
+  const bottomInset = keyboardHeight > 0 ? 0 : insets.bottom;
   return (
     <Modal
       visible={visible}
@@ -120,6 +128,7 @@ export function BottomSheet({
               {
                 backgroundColor: p.sheetBg,
                 borderColor: p.dark ? 'rgba(255,255,255,0.1)' : '#F3E8FF',
+                paddingBottom: bottomInset,
               },
             ]}>
             <View style={sheetStyles.headerRow}>
