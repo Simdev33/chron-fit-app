@@ -197,34 +197,6 @@ export default function MedicalScreen() {
           <HealthCalendar />
         </View>
 
-        {/* Stat kártyák */}
-        <View
-          style={{
-            flexDirection: 'row',
-            gap: 12,
-            paddingHorizontal: 20,
-            marginBottom: 20,
-          }}>
-          <GlassCard style={{ flex: 1, padding: 16 }}>
-            <Text style={[styles.statValue, { color: p.text }]}>28</Text>
-            <Text style={[styles.statLabel, { color: p.muted }]}>
-              nap tünetmentesen
-            </Text>
-          </GlassCard>
-          <GlassCard style={{ flex: 1, padding: 16 }}>
-            <Text style={[styles.statValue, { color: p.text }]}>96%</Text>
-            <Text style={[styles.statLabel, { color: p.muted }]}>
-              gyógyszer-adherencia
-            </Text>
-          </GlassCard>
-          <GlassCard style={{ flex: 1, padding: 16 }}>
-            <Text style={[styles.statValue, { color: p.text }]}>1,8</Text>
-            <Text style={[styles.statLabel, { color: p.muted }]}>
-              CRP (mg/L)
-            </Text>
-          </GlassCard>
-        </View>
-
         {/* Duál grafikon */}
         <View style={{ paddingHorizontal: 20, marginBottom: 24 }}>
           <GlassCard style={{ padding: 20 }}>
@@ -494,16 +466,6 @@ const styles = StyleSheet.create({
     fontFamily: font.display,
     fontSize: 13,
     color: '#fff',
-  },
-  statValue: {
-    fontFamily: font.displayX,
-    fontSize: 22,
-    marginBottom: 4,
-  },
-  statLabel: {
-    fontSize: 10,
-    fontFamily: font.bodyMedium,
-    lineHeight: 13,
   },
   sectionLabel: {
     fontSize: 12,
