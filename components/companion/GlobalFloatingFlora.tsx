@@ -241,17 +241,31 @@ function NativeFloraVideo({
   loop: boolean;
   onEnded: () => void;
 }) {
-  const player = useVideoPlayer(source, (instance) => {
+  // Flora's clip swaps whenever she changes look or flips between idle and
+  // action. Passing the live source to the hook makes it build a new player and
+  // release the old one on every swap, and the view can end up holding the
+  // released one. Keeping one player and swapping its source avoids that race.
+  const initialSource = useRef(source).current;
+  const appliedSource = useRef(source);
+
+  const player = useVideoPlayer(initialSource, (instance) => {
     instance.loop = loop;
     instance.muted = true;
     instance.play();
   });
 
-  // The clip swaps as Flora changes look or switches idle/action, and the hook
-  // keeps the same player instance across those swaps.
   useEffect(() => {
     player.loop = loop;
-  }, [loop, player]);
+    if (appliedSource.current === source) return;
+    appliedSource.current = source;
+    player
+      .replaceAsync(source)
+      .then(() => player.play())
+      .catch(() => {
+        // A clip that will not load should not strand her mid-animation.
+        onEnded();
+      });
+  }, [loop, onEnded, player, source]);
 
   useEventListener(player, 'playToEnd', () => {
     if (!loop) onEnded();
