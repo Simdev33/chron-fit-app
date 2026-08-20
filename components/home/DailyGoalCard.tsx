@@ -1,149 +1,233 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { Check, ChevronRight } from 'lucide-react-native';
-import Svg, { Circle } from 'react-native-svg';
+import { LinearGradient } from 'expo-linear-gradient';
+import {
+  BookOpenCheck,
+  Check,
+  Flame,
+  Pill,
+  UtensilsCrossed,
+} from 'lucide-react-native';
 
 import { GlassCard, usePalette } from '@/components/figma/ui';
 import { font, violet } from '@/constants/figma';
-import type { DailyProgress } from '@/utils/dailyTasks';
-
-const RING = 56;
-const STROKE = 6;
-const RADIUS = (RING - STROKE) / 2;
-const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
+import type { DailyStats } from '@/utils/dailyStats';
 
 const DONE = '#34D399';
 
-const KIND_HINT: Record<DailyProgress['tasks'][number]['kind'], string> = {
-  medication: 'Következő: gyógyszer',
-  journal: 'Következő: tegnapi napló',
-  workout: 'Következő: edzés',
-};
+type RowKind = 'journal' | 'medication' | 'activeCalories' | 'meals';
 
-export function DailyGoalCard({
-  progress,
+function StatBar({
+  icon,
+  label,
+  value,
+  ratio,
   onPress,
 }: {
-  progress: DailyProgress;
-  onPress: (task: DailyProgress['next']) => void;
+  icon: React.ReactNode;
+  label: string;
+  /** What the right hand side reads. */
+  value: string;
+  ratio: number;
+  onPress?: () => void;
 }) {
   const p = usePalette();
-  const complete = progress.next === null;
-  const colour = complete ? DONE : violet[500];
+  const complete = ratio >= 1;
 
   return (
     <Pressable
-      onPress={() => onPress(progress.next)}
-      accessibilityRole="button"
-      accessibilityLabel={
-        complete
-          ? 'Mára minden kész'
-          : `${progress.done} kész ${progress.total} teendőből`
-      }
-      style={({ pressed }) => [pressed && { transform: [{ scale: 0.99 }] }]}>
-      <GlassCard style={{ padding: 16 }}>
-        <View style={styles.row}>
-          <View style={{ width: RING, height: RING }}>
-            <Svg width={RING} height={RING}>
-              <Circle
-                cx={RING / 2}
-                cy={RING / 2}
-                r={RADIUS}
-                stroke={p.dark ? 'rgba(255,255,255,0.10)' : '#EDE9FE'}
-                strokeWidth={STROKE}
-                fill="none"
-              />
-              {progress.ratio > 0 ? (
-                <Circle
-                  cx={RING / 2}
-                  cy={RING / 2}
-                  r={RADIUS}
-                  stroke={colour}
-                  strokeWidth={STROKE}
-                  strokeLinecap="round"
-                  fill="none"
-                  strokeDasharray={`${CIRCUMFERENCE * progress.ratio} ${CIRCUMFERENCE}`}
-                  // Start at the top rather than at three o'clock.
-                  transform={`rotate(-90 ${RING / 2} ${RING / 2})`}
-                />
-              ) : null}
-            </Svg>
-            <View style={styles.ringCentre} pointerEvents="none">
-              {complete ? (
-                <Check size={20} color={DONE} strokeWidth={3} />
-              ) : (
-                <Text style={[styles.ringValue, { color: p.text }]}>
-                  {Math.round(progress.ratio * 100)}
-                  <Text style={styles.ringPercent}>%</Text>
-                </Text>
-              )}
-            </View>
-          </View>
-
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={[styles.title, { color: p.text }]}>
-              {complete ? 'Szép munka!' : 'Napi cél'}
-            </Text>
-            <Text style={[styles.subtitle, { color: p.muted }]}>
-              {complete
-                ? progress.total > 0
-                  ? 'Mára mindent kipipáltál.'
-                  : 'Mára nincs bejegyzett teendőd.'
-                : `${progress.done}/${progress.total} kész · ${
-                    progress.next ? KIND_HINT[progress.next.kind] : ''
-                  }`}
-            </Text>
-
-            {!complete && progress.next ? (
-              <Text
-                style={[styles.nextLabel, { color: violet[400] }]}
-                numberOfLines={1}>
-                {progress.next.label}
-              </Text>
-            ) : null}
-          </View>
-
-          {complete ? null : <ChevronRight size={18} color={p.muted} />}
+      onPress={onPress}
+      disabled={!onPress}
+      accessibilityRole={onPress ? 'button' : 'text'}
+      accessibilityLabel={`${label}: ${value}`}
+      style={({ pressed }) => [pressed && onPress && { opacity: 0.7 }]}>
+      <View style={styles.rowHead}>
+        <View style={styles.rowLabel}>
+          {icon}
+          <Text style={[styles.label, { color: p.text }]} numberOfLines={1}>
+            {label}
+          </Text>
         </View>
-      </GlassCard>
+        <Text
+          style={[styles.value, { color: complete ? DONE : p.muted }]}
+          numberOfLines={1}>
+          {value}
+        </Text>
+      </View>
+
+      <View
+        style={[
+          styles.track,
+          {
+            backgroundColor: p.dark ? 'rgba(255,255,255,0.10)' : '#EDE9FE',
+          },
+        ]}>
+        {ratio > 0 ? (
+          <LinearGradient
+            colors={
+              complete ? [DONE, '#10B981'] : [violet[400], violet[600]]
+            }
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={[
+              styles.fill,
+              { width: `${Math.min(Math.max(ratio, 0), 1) * 100}%` },
+            ]}
+          />
+        ) : null}
+      </View>
     </Pressable>
   );
 }
 
+export function DailyGoalCard({
+  stats,
+  onOpen,
+}: {
+  stats: DailyStats;
+  onOpen?: (row: RowKind) => void;
+}) {
+  const p = usePalette();
+  const iconSize = 14;
+
+  const rows: React.ReactNode[] = [];
+
+  // The journal is the one constant: it is asked of everyone, every day.
+  rows.push(
+    <StatBar
+      key="journal"
+      icon={<BookOpenCheck size={iconSize} color={violet[400]} />}
+      label="Napi napló"
+      value={stats.journalDone ? 'Kész' : 'Kitöltésre vár'}
+      ratio={stats.journalDone ? 1 : 0}
+      onPress={onOpen ? () => onOpen('journal') : undefined}
+    />,
+  );
+
+  if (stats.medication) {
+    const { current, goal } = stats.medication;
+    rows.push(
+      <StatBar
+        key="medication"
+        icon={<Pill size={iconSize} color={violet[400]} />}
+        label="Gyógyszerek"
+        value={`${current}/${goal}`}
+        ratio={goal > 0 ? current / goal : 0}
+        onPress={onOpen ? () => onOpen('medication') : undefined}
+      />,
+    );
+  }
+
+  if (stats.activeCalories) {
+    const { current, goal } = stats.activeCalories;
+    rows.push(
+      <StatBar
+        key="active"
+        icon={<Flame size={iconSize} color={violet[400]} />}
+        label="Aktív kalória"
+        value={`${current} / ${goal} kcal`}
+        ratio={goal > 0 ? current / goal : 0}
+        onPress={onOpen ? () => onOpen('activeCalories') : undefined}
+      />,
+    );
+  }
+
+  if (stats.meals) {
+    const { current, goal } = stats.meals;
+    rows.push(
+      <StatBar
+        key="meals"
+        icon={<UtensilsCrossed size={iconSize} color={violet[400]} />}
+        label="Étkezés"
+        value={`${Math.round((current / goal) * 100)}%`}
+        ratio={goal > 0 ? current / goal : 0}
+        onPress={onOpen ? () => onOpen('meals') : undefined}
+      />,
+    );
+  }
+
+  const allDone =
+    stats.journalDone &&
+    (!stats.medication ||
+      stats.medication.current >= stats.medication.goal) &&
+    (!stats.activeCalories ||
+      stats.activeCalories.current >= stats.activeCalories.goal);
+
+  return (
+    <GlassCard style={{ padding: 16 }}>
+      <View style={styles.head}>
+        <Text style={[styles.title, { color: p.text }]}>Napi cél</Text>
+        {allDone ? (
+          <View style={styles.doneChip}>
+            <Check size={11} color={DONE} strokeWidth={3} />
+            <Text style={[styles.doneLabel, { color: DONE }]}>
+              Szép munka!
+            </Text>
+          </View>
+        ) : null}
+      </View>
+
+      {/* The card is only as tall as it has rows to show. */}
+      <View style={{ gap: 12 }}>{rows}</View>
+    </GlassCard>
+  );
+}
+
 const styles = StyleSheet.create({
-  row: {
+  head: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
-  },
-  ringCentre: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  ringValue: {
-    fontFamily: font.displayX,
-    fontSize: 16,
-  },
-  ringPercent: {
-    fontSize: 10,
+    justifyContent: 'space-between',
+    marginBottom: 14,
+    gap: 12,
   },
   title: {
     fontFamily: font.display,
     fontSize: 16,
   },
-  subtitle: {
-    fontFamily: font.body,
-    fontSize: 12,
-    marginTop: 2,
+  doneChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+    backgroundColor: 'rgba(52,211,153,0.14)',
   },
-  nextLabel: {
+  doneLabel: {
+    fontFamily: font.bodySemi,
+    fontSize: 10,
+  },
+  rowHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginBottom: 6,
+  },
+  rowLabel: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    flex: 1,
+    minWidth: 0,
+  },
+  label: {
+    fontFamily: font.bodyMedium,
+    fontSize: 13,
+    flexShrink: 1,
+  },
+  value: {
     fontFamily: font.bodySemi,
     fontSize: 12,
-    marginTop: 4,
+  },
+  track: {
+    height: 8,
+    borderRadius: 999,
+    overflow: 'hidden',
+  },
+  fill: {
+    height: '100%',
+    borderRadius: 999,
   },
 });

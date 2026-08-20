@@ -59,6 +59,7 @@ import { useFloraScene } from '@/context/FloraSceneContext';
 import { useProfile } from '@/context/ProfileContext';
 import { DailyGoalCard } from '@/components/home/DailyGoalCard';
 import { FloraTipCard } from '@/components/home/FloraTipCard';
+import { computeDailyStats } from '@/utils/dailyStats';
 import { computeDailyProgress } from '@/utils/dailyTasks';
 import { buildFloraTip } from '@/utils/floraTip';
 import { missingForTargets } from '@/utils/nutritionTargets';
@@ -247,6 +248,7 @@ export default function HomeScreen() {
       (a, b) => (appointmentTime(a) ?? 0) - (appointmentTime(b) ?? 0),
     )[0];
   const progress = computeDailyProgress(log, now);
+  const dailyStats = computeDailyStats(log, profile, now);
   const floraTip = buildFloraTip(profile, log, progress, now);
 
   const [sheet, setSheet] = useState<SheetKind>(null);
@@ -479,13 +481,12 @@ export default function HomeScreen() {
         {/* Napi cél és Flóra tippje */}
         <View style={{ paddingHorizontal: 20, marginBottom: 20, gap: 12 }}>
           <DailyGoalCard
-            progress={progress}
-            onPress={(task) => {
-              // Straight to whatever is outstanding, rather than making the
-              // user work out where that lives.
-              if (task?.kind === 'journal') setSheet('symptoms');
-              else if (task?.kind === 'workout') router.push('/lifestyle');
-              else router.push('/schedule');
+            stats={dailyStats}
+            onOpen={(row) => {
+              // Each bar leads to where that number is actually kept.
+              if (row === 'journal') setSheet('symptoms');
+              else if (row === 'medication') router.push('/schedule');
+              else router.push('/lifestyle');
             }}
           />
           <FloraTipCard
