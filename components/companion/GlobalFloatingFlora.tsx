@@ -55,8 +55,10 @@ const FLORA_CLIPS: Record<
   Record<FloraVideoMode, number>
 > = {
   alap: {
-    action: require('../../assets/flora/flora_assistant_action.webp'),
-    idle: require('../../assets/flora/flora_assistant_idle.webp'),
+    // A greeting rather than an activity: she waves on arrival and then
+    // settles into her own idle loop.
+    action: require('../../assets/flora/flora_idle_loop_wave.webp'),
+    idle: require('../../assets/flora/flora_idle_loop.webp'),
   },
   sef: {
     action: require('../../assets/flora/flora_chef_action.webp'),
@@ -386,6 +388,10 @@ export function GlobalFloatingFlora() {
 
   useEffect(() => {
     if (videoMode !== 'idle') return;
+    // The other looks replay something she is doing -- chopping, lifting --
+    // which bears repeating. On the home screen the action clip is a wave, and
+    // waving every half minute at someone who never left is odd.
+    if (targetLook === 'alap') return;
     const replayTimer = setTimeout(() => {
       setVideoMode('action');
     }, ACTION_REPLAY_MS);
@@ -568,6 +574,10 @@ export function GlobalFloatingFlora() {
     wasHidden.current = false;
     exitScale.value = withSpring(1, { damping: 12, stiffness: 190 });
     exitOpacity.value = withTiming(1, { duration: EXIT_MS });
+    // She is not remounted while hidden, so her clip would still be the idle
+    // one she left on. Coming back is an arrival, and arrivals get the
+    // greeting.
+    setVideoMode('action');
   }, [exitOpacity, exitScale, hidden]);
 
   // The dock rises from the bottom edge, clear of the floating tab bar.
