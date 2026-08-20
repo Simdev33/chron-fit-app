@@ -475,6 +475,12 @@ export function GlobalFloatingFlora() {
   const bubbleScale = useSharedValue(0);
   const bubbleOpacity = useSharedValue(0);
   const closeReveal = useSharedValue(0);
+  // She used to blink out the instant she was dropped on the X. These drive a
+  // short exit instead: she is pulled into the button while shrinking away.
+  const exitScale = useSharedValue(1);
+  const exitOpacity = useSharedValue(1);
+  const dismissing = useSharedValue(0);
+
   const [speech, setSpeech] = useState<string | null>(null);
   const [edge, setEdge] = useState<'left' | 'right'>('right');
   const speechGen = useRef(0);
@@ -726,12 +732,6 @@ export function GlobalFloatingFlora() {
   const setSnappedEdge = useCallback((next: 'left' | 'right') => {
     setEdge(next);
   }, []);
-
-  // She used to blink out the instant she was dropped on the X. These drive a
-  // short exit instead: she is pulled into the button while shrinking away.
-  const exitScale = useSharedValue(1);
-  const exitOpacity = useSharedValue(1);
-  const dismissing = useSharedValue(0);
 
   const hideFlora = useCallback(() => {
     updateProfile({ floraHidden: true });
