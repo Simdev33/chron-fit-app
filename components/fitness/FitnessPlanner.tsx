@@ -13,6 +13,7 @@ import {
   ChevronDown,
   RotateCcw,
   Sparkles,
+  Trash2,
 } from 'lucide-react-native';
 
 import { GlassCard, usePalette } from '@/components/figma/ui';
@@ -30,6 +31,7 @@ import type {
   WorkoutDayKind,
 } from '@/types/workoutPlan';
 import { buildUserContext } from '@/utils/buildUserContext';
+import { confirmDestructive } from '@/utils/confirmDialog';
 import { resolveTracking } from '@/utils/exerciseTracking';
 import { planWorkout } from '@/utils/planWorkout';
 
@@ -274,6 +276,15 @@ export function FitnessPlanner() {
 
   const plan = log.workoutPlan;
 
+  const discard = () => {
+    confirmDestructive({
+      title: 'Terv törlése',
+      message:
+        'A heti terv és a hozzá beírt ismétlések, súlyok törlődnek. Az elvégzettnek jelölt edzések a naptárban megmaradnak.',
+      onConfirm: () => saveWorkoutPlan(null),
+    });
+  };
+
   const submit = async (text?: string) => {
     const request = (text ?? prompt).trim();
     if (!request || planning) return;
@@ -396,9 +407,30 @@ export function FitnessPlanner() {
 
       {plan ? (
         <View>
-          <Text style={[styles.sectionLabel, { color: p.muted }]}>
-            A heted
-          </Text>
+          <View style={styles.planHead}>
+            <Text
+              style={[
+                styles.sectionLabel,
+                { color: p.muted, marginBottom: 0 },
+              ]}>
+              A heted
+            </Text>
+            <Pressable
+              onPress={discard}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Terv törlése"
+              style={({ pressed }) => [
+                styles.discard,
+                { borderColor: p.fieldBorder },
+                pressed && { opacity: 0.6 },
+              ]}>
+              <Trash2 size={13} color={p.muted} />
+              <Text style={[styles.discardLabel, { color: p.muted }]}>
+                Terv törlése
+              </Text>
+            </Pressable>
+          </View>
           <View style={{ gap: 12 }}>
             {plan.summary ? (
               <Text style={[styles.summary, { color: p.muted }]}>
@@ -464,6 +496,26 @@ const styles = StyleSheet.create({
   planLabel: {
     fontFamily: font.display,
     fontSize: 14,
+  },
+  planHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+    gap: 12,
+  },
+  discard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  discardLabel: {
+    fontFamily: font.bodySemi,
+    fontSize: 11,
   },
   summary: {
     fontFamily: font.body,

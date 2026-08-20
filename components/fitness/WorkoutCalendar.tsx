@@ -1,5 +1,6 @@
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { ChevronLeft, ChevronRight } from 'lucide-react-native';
 
 import { GlassCard, usePalette } from '@/components/figma/ui';
@@ -42,46 +43,49 @@ function mondayIndex(date: Date) {
   return (date.getDay() + 6) % 7;
 }
 
+function startOfWeek(date: Date) {
+  const monday = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  monday.setDate(monday.getDate() - mondayIndex(monday));
+  return monday;
+}
+
 export function WorkoutCalendar() {
   const p = usePalette();
   const { log } = useHealthLog();
+
   const today = new Date();
-  const [cursor, setCursor] = useState(
-    () => new Date(today.getFullYear(), today.getMonth(), 1),
-  );
+  const todayIso = toIsoDate(today);
+  const [weekStart, setWeekStart] = useState(() => startOfWeek(today));
   const [selected, setSelected] = useState<string | null>(null);
 
-  const todayIso = toIsoDate(today);
+  const days = Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(
+      weekStart.getFullYear(),
+      weekStart.getMonth(),
+      weekStart.getDate() + index,
+    );
+    return { date, iso: toIsoDate(date), label: WEEKDAY_LABELS[index] };
+  });
 
-  const cells = useMemo(() => {
-    const year = cursor.getFullYear();
-    const month = cursor.getMonth();
-    const first = new Date(year, month, 1);
-    const daysInMonth = new Date(year, month + 1, 0).getDate();
-    const lead = mondayIndex(first);
-
-    // A fixed six-week grid would leave a blank row most months; the length is
-    // rounded up to whole weeks instead so the card never has a dangling gap.
-    const total = Math.ceil((lead + daysInMonth) / 7) * 7;
-    return Array.from({ length: total }, (_, index) => {
-      const dayNumber = index - lead + 1;
-      if (dayNumber < 1 || dayNumber > daysInMonth) return null;
-      const date = new Date(year, month, dayNumber);
-      return {
-        dayNumber,
-        date,
-        iso: toIsoDate(date),
-      };
-    });
-  }, [cursor]);
-
-  const shiftMonth = (delta: number) => {
+  const shiftWeek = (delta: number) => {
     setSelected(null);
-    setCursor(
+    setWeekStart(
       (current) =>
-        new Date(current.getFullYear(), current.getMonth() + delta, 1),
+        new Date(
+          current.getFullYear(),
+          current.getMonth(),
+          current.getDate() + delta * 7,
+        ),
     );
   };
+
+  // A week can straddle two months; naming both beats silently picking one.
+  const first = days[0].date;
+  const last = days[6].date;
+  const heading =
+    first.getMonth() === last.getMonth()
+      ? `${first.getFullYear()}. ${MONTH_NAMES[first.getMonth()]}`
+      : `${MONTH_NAMES[first.getMonth()]} – ${MONTH_NAMES[last.getMonth()]}`;
 
   // The plan is a weekly routine with no dates of its own, so it is laid over
   // the calendar from today onwards. Showing it on past days would claim
@@ -95,9 +99,7 @@ export function WorkoutCalendar() {
   const plannedFor = (date: Date) => {
     const plan = log.workoutPlan;
     if (!plan || date.getTime() < startOfToday) return null;
-    const day = plan.days.find(
-      (entry) => entry.weekday === mondayIndex(date),
-    );
+    const day = plan.days.find((entry) => entry.weekday === mondayIndex(date));
     return day && day.kind !== 'rest' ? day : null;
   };
 
@@ -105,123 +107,135 @@ export function WorkoutCalendar() {
     ? (log.completedWorkouts[selected] ?? [])
     : [];
   const selectedPlan = selected
-    ? (log.workoutPlan?.days.find(
-        (entry) =>
-          entry.weekday ===
-          mondayIndex(new Date(`${selected}T00:00:00`)),
-      ) ?? null)
+    ? plannedFor(new Date(`${selected}T00:00:00`))
     : null;
 
   return (
     <GlassCard style={{ padding: 16 }}>
-      <View style={styles.head}>
-        <Pressable
-          onPress={() => shiftMonth(-1)}
-          hitSlop={10}
-          accessibilityRole="button"
-          accessibilityLabel="Előző hónap"
-          style={({ pressed }) => [
-            styles.navBtn,
-            { backgroundColor: p.chipBg },
-            pressed && { transform: [{ scale: 0.92 }] },
-          ]}>
-          <ChevronLeft size={16} color={p.muted} />
-        </Pressable>
-
-        <Text style={[styles.monthLabel, { color: p.text }]}>
-          {cursor.getFullYear()}. {MONTH_NAMES[cursor.getMonth()]}
+      <View style={styles.calHeader}>
+        <Text style={{ fontFamily: font.display, fontSize: 14, color: p.text }}>
+          {heading}
         </Text>
-
-        <Pressable
-          onPress={() => shiftMonth(1)}
-          hitSlop={10}
-          accessibilityRole="button"
-          accessibilityLabel="Következő hónap"
-          style={({ pressed }) => [
-            styles.navBtn,
-            { backgroundColor: p.chipBg },
-            pressed && { transform: [{ scale: 0.92 }] },
-          ]}>
-          <ChevronRight size={16} color={p.muted} />
-        </Pressable>
+        <View style={{ flexDirection: 'row', gap: 4 }}>
+          <Pressable
+            onPress={() => shiftWeek(-1)}
+            accessibilityRole="button"
+            accessibilityLabel="Előző hét"
+            style={({ pressed }) => [
+              styles.calNav,
+              { backgroundColor: p.chipBg },
+              pressed && { transform: [{ scale: 0.92 }] },
+            ]}>
+            <ChevronLeft size={14} color={p.muted} />
+          </Pressable>
+          <Pressable
+            onPress={() => shiftWeek(1)}
+            accessibilityRole="button"
+            accessibilityLabel="Következő hét"
+            style={({ pressed }) => [
+              styles.calNav,
+              { backgroundColor: p.chipBg },
+              pressed && { transform: [{ scale: 0.92 }] },
+            ]}>
+            <ChevronRight size={14} color={p.muted} />
+          </Pressable>
+        </View>
       </View>
 
-      <View style={styles.weekRow}>
-        {WEEKDAY_LABELS.map((label) => (
-          <View key={label} style={styles.cell}>
-            <Text style={[styles.weekLabel, { color: p.faint }]}>{label}</Text>
-          </View>
-        ))}
-      </View>
-
-      <View style={styles.grid}>
-        {cells.map((cell, index) => {
-          if (!cell) return <View key={`blank-${index}`} style={styles.cell} />;
-
-          const entries = log.completedWorkouts[cell.iso] ?? [];
-          const planned = plannedFor(cell.date);
+      <View style={{ flexDirection: 'row', gap: 4 }}>
+        {days.map((day) => {
+          const entries = log.completedWorkouts[day.iso] ?? [];
+          const planned = plannedFor(day.date);
+          const isToday = day.iso === todayIso;
+          const active = day.iso === selected;
           const hasMark = entries.length > 0 || planned !== null;
-          const isToday = cell.iso === todayIso;
-          const isSelected = cell.iso === selected;
+
+          const inner = (
+            <>
+              <Text
+                style={{
+                  fontSize: 10,
+                  fontFamily: font.bodyMedium,
+                  marginBottom: 4,
+                  color: active ? 'rgba(255,255,255,0.7)' : p.muted,
+                }}>
+                {day.label}
+              </Text>
+              <Text
+                style={{
+                  fontSize: 14,
+                  fontFamily: font.display,
+                  color: active ? '#fff' : p.text,
+                }}>
+                {day.date.getDate()}
+              </Text>
+
+              <View style={styles.dots}>
+                {entries.length ? (
+                  entries.slice(0, 3).map((entry) => (
+                    <View
+                      key={entry.id}
+                      style={[
+                        styles.dot,
+                        {
+                          backgroundColor: active
+                            ? '#fff'
+                            : KIND_COLOR[entry.kind],
+                        },
+                      ]}
+                    />
+                  ))
+                ) : planned ? (
+                  // Hollow, so a plan never looks like something already done.
+                  <View
+                    style={[
+                      styles.dot,
+                      styles.dotPlanned,
+                      {
+                        borderColor: active
+                          ? 'rgba(255,255,255,0.85)'
+                          : KIND_COLOR[planned.kind],
+                      },
+                    ]}
+                  />
+                ) : null}
+              </View>
+            </>
+          );
 
           return (
             <Pressable
-              key={cell.iso}
-              onPress={() => setSelected(isSelected ? null : cell.iso)}
-              disabled={!hasMark}
+              key={day.iso}
+              onPress={() => setSelected(active || !hasMark ? null : day.iso)}
               accessibilityRole="button"
-              accessibilityLabel={`${cell.dayNumber}. ${
+              accessibilityLabel={`${day.date.getDate()}. ${
                 entries.length
                   ? 'volt edzés'
                   : planned
                     ? `tervezve: ${planned.title}`
                     : 'nincs edzés'
               }`}
-              style={styles.cell}>
-              <View
-                style={[
-                  styles.day,
-                  isToday && { borderColor: violet[400], borderWidth: 1 },
-                  isSelected && { backgroundColor: 'rgba(139,92,246,0.25)' },
-                ]}>
-                <Text
+              style={{ flex: 1 }}>
+              {active ? (
+                <LinearGradient
+                  colors={[violet[600], violet[700]]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 0, y: 1 }}
+                  style={styles.dayCell}>
+                  {inner}
+                </LinearGradient>
+              ) : (
+                <View
                   style={[
-                    styles.dayNumber,
-                    {
-                      color: hasMark
-                        ? p.text
-                        : isToday
-                          ? violet[400]
-                          : p.mutedSoft,
-                      fontFamily: entries.length ? font.bodySemi : font.body,
+                    styles.dayCell,
+                    isToday && {
+                      borderWidth: 1,
+                      borderColor: violet[400],
                     },
                   ]}>
-                  {cell.dayNumber}
-                </Text>
-
-                <View style={styles.dots}>
-                  {entries.length ? (
-                    entries.slice(0, 3).map((entry) => (
-                      <View
-                        key={entry.id}
-                        style={[
-                          styles.dot,
-                          { backgroundColor: KIND_COLOR[entry.kind] },
-                        ]}
-                      />
-                    ))
-                  ) : planned ? (
-                    // Hollow, so a plan never looks like something already done.
-                    <View
-                      style={[
-                        styles.dot,
-                        styles.dotPlanned,
-                        { borderColor: KIND_COLOR[planned.kind] },
-                      ]}
-                    />
-                  ) : null}
+                  {inner}
                 </View>
-              </View>
+              )}
             </Pressable>
           );
         })}
@@ -251,6 +265,7 @@ export function WorkoutCalendar() {
               </View>
             </View>
           ) : null}
+
           {selectedEntries.map((entry) => (
             <View key={entry.id} style={styles.detailRow}>
               <View
@@ -280,57 +295,29 @@ export function WorkoutCalendar() {
 }
 
 const styles = StyleSheet.create({
-  head: {
+  calHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 14,
+    marginBottom: 12,
   },
-  navBtn: {
-    width: 30,
-    height: 30,
-    borderRadius: 10,
+  calNav: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  monthLabel: {
-    flex: 1,
-    textAlign: 'center',
-    fontFamily: font.display,
-    fontSize: 15,
-  },
-  weekRow: {
-    flexDirection: 'row',
-    marginBottom: 4,
-  },
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-  },
-  // Seven equal columns rather than fixed widths, so the grid fits any phone.
-  cell: {
-    width: `${100 / 7}%`,
-    padding: 2,
-  },
-  weekLabel: {
-    textAlign: 'center',
-    fontFamily: font.bodySemi,
-    fontSize: 10,
-  },
-  day: {
-    aspectRatio: 1,
-    borderRadius: 10,
+  dayCell: {
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 2,
-  },
-  dayNumber: {
-    fontSize: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
   },
   dots: {
     flexDirection: 'row',
     gap: 2,
-    height: 4,
+    height: 5,
+    marginTop: 4,
   },
   dot: {
     width: 4,
