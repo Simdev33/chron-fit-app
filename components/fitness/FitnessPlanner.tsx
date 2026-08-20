@@ -45,6 +45,10 @@ const WEEKDAY_FULL = [
   'Vasárnap',
 ];
 
+/** Destructive actions read as destructive before they are tapped. */
+const DANGER = '#F87171';
+const DANGER_BG = 'rgba(248,113,113,0.12)';
+
 const EXAMPLES = [
   'Heti 3 súlyzós edzést kérek, fókuszban a láb, a pihenőnapokon egy kis kardióval.',
   'Most fáradt vagyok, csak könnyű mozgást szeretnék a héten.',
@@ -422,11 +426,11 @@ export function FitnessPlanner() {
               accessibilityLabel="Terv törlése"
               style={({ pressed }) => [
                 styles.discard,
-                { borderColor: p.fieldBorder },
+                { borderColor: DANGER, backgroundColor: DANGER_BG },
                 pressed && { opacity: 0.6 },
               ]}>
-              <Trash2 size={13} color={p.muted} />
-              <Text style={[styles.discardLabel, { color: p.muted }]}>
+              <Trash2 size={13} color={DANGER} />
+              <Text style={[styles.discardLabel, { color: DANGER }]}>
                 Terv törlése
               </Text>
             </Pressable>

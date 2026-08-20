@@ -1,28 +1,11 @@
 import React, { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { ChevronLeft, ChevronRight } from 'lucide-react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
+import { DayStrip } from '@/components/figma/DayStrip';
 import { GlassCard, usePalette } from '@/components/figma/ui';
-import { font, violet } from '@/constants/figma';
-import { toIsoDate, useHealthLog } from '@/context/HealthLogContext';
+import { font } from '@/constants/figma';
+import { useHealthLog } from '@/context/HealthLogContext';
 import type { WorkoutDayKind } from '@/types/workoutPlan';
-
-const WEEKDAY_LABELS = ['H', 'K', 'Sze', 'Cs', 'P', 'Szo', 'V'];
-const MONTH_NAMES = [
-  'január',
-  'február',
-  'március',
-  'április',
-  'május',
-  'június',
-  'július',
-  'augusztus',
-  'szeptember',
-  'október',
-  'november',
-  'december',
-];
 
 export const KIND_COLOR: Record<WorkoutDayKind, string> = {
   strength: '#A78BFA',
@@ -43,52 +26,15 @@ function mondayIndex(date: Date) {
   return (date.getDay() + 6) % 7;
 }
 
-function startOfWeek(date: Date) {
-  const monday = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-  monday.setDate(monday.getDate() - mondayIndex(monday));
-  return monday;
-}
-
 export function WorkoutCalendar() {
   const p = usePalette();
   const { log } = useHealthLog();
 
   const today = new Date();
-  const todayIso = toIsoDate(today);
-  const [weekStart, setWeekStart] = useState(() => startOfWeek(today));
   const [selected, setSelected] = useState<string | null>(null);
 
-  const days = Array.from({ length: 7 }, (_, index) => {
-    const date = new Date(
-      weekStart.getFullYear(),
-      weekStart.getMonth(),
-      weekStart.getDate() + index,
-    );
-    return { date, iso: toIsoDate(date), label: WEEKDAY_LABELS[index] };
-  });
-
-  const shiftWeek = (delta: number) => {
-    setSelected(null);
-    setWeekStart(
-      (current) =>
-        new Date(
-          current.getFullYear(),
-          current.getMonth(),
-          current.getDate() + delta * 7,
-        ),
-    );
-  };
-
-  // A week can straddle two months; naming both beats silently picking one.
-  const first = days[0].date;
-  const last = days[6].date;
-  const heading =
-    first.getMonth() === last.getMonth()
-      ? `${first.getFullYear()}. ${MONTH_NAMES[first.getMonth()]}`
-      : `${MONTH_NAMES[first.getMonth()]} – ${MONTH_NAMES[last.getMonth()]}`;
-
   // The plan is a weekly routine with no dates of its own, so it is laid over
-  // the calendar from today onwards. Showing it on past days would claim
+  // the strip from today onwards. Showing it on past days would claim
   // something happened that never did.
   const startOfToday = new Date(
     today.getFullYear(),
@@ -112,134 +58,54 @@ export function WorkoutCalendar() {
 
   return (
     <GlassCard style={{ padding: 16 }}>
-      <View style={styles.calHeader}>
-        <Text style={{ fontFamily: font.display, fontSize: 14, color: p.text }}>
-          {heading}
-        </Text>
-        <View style={{ flexDirection: 'row', gap: 4 }}>
-          <Pressable
-            onPress={() => shiftWeek(-1)}
-            accessibilityRole="button"
-            accessibilityLabel="Előző hét"
-            style={({ pressed }) => [
-              styles.calNav,
-              { backgroundColor: p.chipBg },
-              pressed && { transform: [{ scale: 0.92 }] },
-            ]}>
-            <ChevronLeft size={14} color={p.muted} />
-          </Pressable>
-          <Pressable
-            onPress={() => shiftWeek(1)}
-            accessibilityRole="button"
-            accessibilityLabel="Következő hét"
-            style={({ pressed }) => [
-              styles.calNav,
-              { backgroundColor: p.chipBg },
-              pressed && { transform: [{ scale: 0.92 }] },
-            ]}>
-            <ChevronRight size={14} color={p.muted} />
-          </Pressable>
-        </View>
-      </View>
-
-      <View style={{ flexDirection: 'row', gap: 4 }}>
-        {days.map((day) => {
+      <DayStrip
+        selectedIso={selected}
+        onSelect={(day) => {
+          const hasMark =
+            (log.completedWorkouts[day.iso] ?? []).length > 0 ||
+            plannedFor(day.date) !== null;
+          // A day with nothing on it has no detail to open, so tapping it
+          // simply closes whatever was showing.
+          setSelected(hasMark && day.iso !== selected ? day.iso : null);
+        }}
+        renderMarker={({ day, active }) => {
           const entries = log.completedWorkouts[day.iso] ?? [];
           const planned = plannedFor(day.date);
-          const isToday = day.iso === todayIso;
-          const active = day.iso === selected;
-          const hasMark = entries.length > 0 || planned !== null;
 
-          const inner = (
-            <>
-              <Text
-                style={{
-                  fontSize: 10,
-                  fontFamily: font.bodyMedium,
-                  marginBottom: 4,
-                  color: active ? 'rgba(255,255,255,0.7)' : p.muted,
-                }}>
-                {day.label}
-              </Text>
-              <Text
-                style={{
-                  fontSize: 14,
-                  fontFamily: font.display,
-                  color: active ? '#fff' : p.text,
-                }}>
-                {day.date.getDate()}
-              </Text>
-
-              <View style={styles.dots}>
-                {entries.length ? (
-                  entries.slice(0, 3).map((entry) => (
-                    <View
-                      key={entry.id}
-                      style={[
-                        styles.dot,
-                        {
-                          backgroundColor: active
-                            ? '#fff'
-                            : KIND_COLOR[entry.kind],
-                        },
-                      ]}
-                    />
-                  ))
-                ) : planned ? (
-                  // Hollow, so a plan never looks like something already done.
+          return (
+            <View style={styles.dots}>
+              {entries.length ? (
+                entries.slice(0, 3).map((entry) => (
                   <View
+                    key={entry.id}
                     style={[
                       styles.dot,
-                      styles.dotPlanned,
                       {
-                        borderColor: active
-                          ? 'rgba(255,255,255,0.85)'
-                          : KIND_COLOR[planned.kind],
+                        backgroundColor: active
+                          ? '#fff'
+                          : KIND_COLOR[entry.kind],
                       },
                     ]}
                   />
-                ) : null}
-              </View>
-            </>
-          );
-
-          return (
-            <Pressable
-              key={day.iso}
-              onPress={() => setSelected(active || !hasMark ? null : day.iso)}
-              accessibilityRole="button"
-              accessibilityLabel={`${day.date.getDate()}. ${
-                entries.length
-                  ? 'volt edzés'
-                  : planned
-                    ? `tervezve: ${planned.title}`
-                    : 'nincs edzés'
-              }`}
-              style={{ flex: 1 }}>
-              {active ? (
-                <LinearGradient
-                  colors={[violet[600], violet[700]]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 0, y: 1 }}
-                  style={styles.dayCell}>
-                  {inner}
-                </LinearGradient>
-              ) : (
+                ))
+              ) : planned ? (
+                // Hollow, so a plan never looks like something already done.
                 <View
                   style={[
-                    styles.dayCell,
-                    isToday && {
-                      borderWidth: 1,
-                      borderColor: violet[400],
+                    styles.dot,
+                    styles.dotPlanned,
+                    {
+                      borderColor: active
+                        ? 'rgba(255,255,255,0.85)'
+                        : KIND_COLOR[planned.kind],
                     },
-                  ]}>
-                  {inner}
-                </View>
-              )}
-            </Pressable>
+                  ]}
+                />
+              ) : null}
+            </View>
           );
-        })}
-      </View>
+        }}
+      />
 
       {selected && (selectedEntries.length || selectedPlan) ? (
         <View style={[styles.detail, { borderTopColor: p.divider }]}>
@@ -295,24 +161,6 @@ export function WorkoutCalendar() {
 }
 
 const styles = StyleSheet.create({
-  calHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-  },
-  calNav: {
-    width: 28,
-    height: 28,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  dayCell: {
-    alignItems: 'center',
-    paddingVertical: 8,
-    borderRadius: 12,
-  },
   dots: {
     flexDirection: 'row',
     gap: 2,

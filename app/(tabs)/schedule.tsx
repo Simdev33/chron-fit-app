@@ -1,7 +1,5 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import {
-  ChevronLeft,
-  ChevronRight,
   Plus,
   Trash2,
   User,
@@ -18,10 +16,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BackgroundWrapper } from '@/components/BackgroundWrapper';
 import { AddAppointmentSheet } from '@/components/figma/AddAppointmentSheet';
+import { DayStrip } from '@/components/figma/DayStrip';
 import { EmptyState, GlassCard, usePalette } from '@/components/figma/ui';
 import { MedicationTimeline } from '@/components/organizer/MedicationTimeline';
 import { font, fuchsia400, violet } from '@/constants/figma';
-import { WEEK } from '@/constants/figmaData';
 import { useHealthLog } from '@/context/HealthLogContext';
 import { useTabBarSpacing } from '@/context/TabBarContext';
 
@@ -30,7 +28,7 @@ export default function ScheduleScreen() {
   const insets = useSafeAreaInsets();
   const tabBarSpacing = useTabBarSpacing();
   const { log, removeAppointment } = useHealthLog();
-  const [selectedDate, setSelectedDate] = useState(13);
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
 
   const appointments = useMemo(
@@ -70,79 +68,14 @@ export default function ScheduleScreen() {
         {/* Heti naptár */}
         <View style={{ paddingHorizontal: 20, marginBottom: 24 }}>
           <GlassCard style={{ padding: 16 }}>
-            <View style={styles.calHeader}>
-              <Text
-                style={{
-                  fontFamily: font.display,
-                  fontSize: 14,
-                  color: p.text,
-                }}>
-                2026. augusztus
-              </Text>
-              <View style={{ flexDirection: 'row', gap: 4 }}>
-                <Pressable style={[styles.calNav, { backgroundColor: p.chipBg }]}>
-                  <ChevronLeft size={14} color={p.muted} />
-                </Pressable>
-                <Pressable style={[styles.calNav, { backgroundColor: p.chipBg }]}>
-                  <ChevronRight size={14} color={p.muted} />
-                </Pressable>
-              </View>
-            </View>
-            <View style={{ flexDirection: 'row', gap: 4 }}>
-              {WEEK.map((d) => {
-                const active = selectedDate === d.date;
-                const inner = (
-                  <>
-                    <Text
-                      style={{
-                        fontSize: 10,
-                        fontFamily: font.bodyMedium,
-                        marginBottom: 4,
-                        color: active ? 'rgba(255,255,255,0.7)' : p.muted,
-                      }}>
-                      {d.day}
-                    </Text>
-                    <Text
-                      style={{
-                        fontSize: 14,
-                        fontFamily: font.display,
-                        color: active ? '#fff' : p.text,
-                      }}>
-                      {d.date}
-                    </Text>
-                    {'today' in d && d.today && !active ? (
-                      <View
-                        style={{
-                          width: 4,
-                          height: 4,
-                          borderRadius: 999,
-                          backgroundColor: violet[500],
-                          marginTop: 4,
-                        }}
-                      />
-                    ) : null}
-                  </>
-                );
-                return (
-                  <Pressable
-                    key={d.date}
-                    onPress={() => setSelectedDate(d.date)}
-                    style={{ flex: 1 }}>
-                    {active ? (
-                      <LinearGradient
-                        colors={[violet[600], violet[700]]}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 0, y: 1 }}
-                        style={styles.dayCell}>
-                        {inner}
-                      </LinearGradient>
-                    ) : (
-                      <View style={styles.dayCell}>{inner}</View>
-                    )}
-                  </Pressable>
-                );
-              })}
-            </View>
+            <DayStrip
+              selectedIso={selectedDate}
+              onSelect={(day) =>
+                setSelectedDate((current) =>
+                  current === day.iso ? null : day.iso,
+                )
+              }
+            />
           </GlassCard>
         </View>
 
