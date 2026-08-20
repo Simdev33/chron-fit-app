@@ -145,7 +145,7 @@ export type CompletedWorkout = {
   results: ExerciseResult[];
 };
 
-type HealthLog = {
+export type HealthLog = {
   /** ISO dátum (YYYY-MM-DD) → hangulat 1-5 */
   moods: Record<string, number>;
   /** ISO dátum → aznapi tünetbejegyzések */

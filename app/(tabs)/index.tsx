@@ -57,6 +57,10 @@ import {
 } from '@/context/HealthLogContext';
 import { useFloraScene } from '@/context/FloraSceneContext';
 import { useProfile } from '@/context/ProfileContext';
+import { DailyGoalCard } from '@/components/home/DailyGoalCard';
+import { FloraTipCard } from '@/components/home/FloraTipCard';
+import { computeDailyProgress } from '@/utils/dailyTasks';
+import { buildFloraTip } from '@/utils/floraTip';
 import { missingForTargets } from '@/utils/nutritionTargets';
 import { useAppTheme } from '@/context/ThemeContext';
 import { useTabBarSpacing } from '@/context/TabBarContext';
@@ -242,6 +246,9 @@ export default function HomeScreen() {
     .sort(
       (a, b) => (appointmentTime(a) ?? 0) - (appointmentTime(b) ?? 0),
     )[0];
+  const progress = computeDailyProgress(log, now);
+  const floraTip = buildFloraTip(profile, log, progress, now);
+
   const [sheet, setSheet] = useState<SheetKind>(null);
   const [profileOpen, setProfileOpen] = useState(false);
 
@@ -468,6 +475,24 @@ export default function HomeScreen() {
             </Pressable>
           </View>
         )}
+
+        {/* Napi cél és Flóra tippje */}
+        <View style={{ paddingHorizontal: 20, marginBottom: 20, gap: 12 }}>
+          <DailyGoalCard
+            progress={progress}
+            onPress={(task) => {
+              // Straight to whatever is outstanding, rather than making the
+              // user work out where that lives.
+              if (task?.kind === 'journal') setSheet('symptoms');
+              else if (task?.kind === 'workout') router.push('/lifestyle');
+              else router.push('/schedule');
+            }}
+          />
+          <FloraTipCard
+            text={floraTip}
+            onPress={() => router.push('/chatbot')}
+          />
+        </View>
 
         {/* Gyors műveletek */}
         <View
