@@ -20,8 +20,13 @@ import { DayStrip } from '@/components/figma/DayStrip';
 import { EmptyState, GlassCard, usePalette } from '@/components/figma/ui';
 import { MedicationTimeline } from '@/components/organizer/MedicationTimeline';
 import { font, fuchsia400, violet } from '@/constants/figma';
-import { useHealthLog } from '@/context/HealthLogContext';
+import { toIsoDate, useHealthLog } from '@/context/HealthLogContext';
 import { useTabBarSpacing } from '@/context/TabBarContext';
+
+const MONTH_SHORT = [
+  'jan.', 'febr.', 'márc.', 'ápr.', 'máj.', 'jún.',
+  'júl.', 'aug.', 'szept.', 'okt.', 'nov.', 'dec.',
+];
 
 export default function ScheduleScreen() {
   const p = usePalette();
@@ -40,6 +45,29 @@ export default function ScheduleScreen() {
       ),
     [log.appointments],
   );
+
+  const todayIso = toIsoDate(new Date());
+
+  /*
+   * With a day picked the list is that day's appointments. With none, the
+   * section is titled "Közelgő", so past ones are dropped -- until now it
+   * listed everything, which is why a blood draw from four days ago still
+   * sat under a heading promising what was coming.
+   */
+  const shownAppointments = useMemo(
+    () =>
+      selectedDate
+        ? appointments.filter((entry) => entry.date === selectedDate)
+        : appointments.filter((entry) => entry.date >= todayIso),
+    [appointments, selectedDate, todayIso],
+  );
+
+  const dayLabel = useMemo(() => {
+    if (!selectedDate) return '';
+    if (selectedDate === todayIso) return 'Mai nap';
+    const [year, month, day] = selectedDate.split('-').map(Number);
+    return `${MONTH_SHORT[month - 1]} ${day}.`;
+  }, [selectedDate, todayIso]);
 
   return (
     <BackgroundWrapper variant="organizer">
@@ -83,17 +111,17 @@ export default function ScheduleScreen() {
         <View style={{ paddingHorizontal: 20, marginBottom: 24 }}>
           <View style={styles.sectionRow}>
             <Text style={[styles.sectionLabel, { color: p.muted }]}>
-              Mai gyógyszerek és kiegészítők
+              {selectedDate ? `${dayLabel} gyógyszerei` : 'Mai gyógyszerek és kiegészítők'}
             </Text>
           </View>
-          <MedicationTimeline />
+          <MedicationTimeline dateIso={selectedDate ?? undefined} />
         </View>
 
         {/* Közelgő időpontok */}
         <View style={{ paddingHorizontal: 20 }}>
           <View style={styles.sectionRow}>
             <Text style={[styles.sectionLabel, { color: p.muted }]}>
-              Közelgő időpontok
+              {selectedDate ? `${dayLabel} időpontjai` : 'Közelgő időpontok'}
             </Text>
             <Pressable
               onPress={() => setAddOpen(true)}
@@ -118,15 +146,23 @@ export default function ScheduleScreen() {
               </LinearGradient>
             </Pressable>
           </View>
-          {appointments.length === 0 ? (
+          {shownAppointments.length === 0 ? (
             <EmptyState
               emoji="🗓️"
-              title="Nincs közelgő orvosi időpont"
-              text="Koppints az „Új” gombra, és rögzítsd a következő vizitedet — időben szólunk majd, és a PDF riportba is bekerül."
+              title={
+                selectedDate
+                  ? 'Ezen a napon nincs időpont'
+                  : 'Nincs közelgő orvosi időpont'
+              }
+              text={
+                selectedDate
+                  ? 'Válassz másik napot a sávon, vagy rögzíts ide egy vizitet az „Új időpont” gombbal.'
+                  : 'Koppints az „Új” gombra, és rögzítsd a következő vizitedet — időben szólunk majd, és a PDF riportba is bekerül.'
+              }
             />
           ) : (
             <View style={{ gap: 12 }}>
-              {appointments.map((a) => (
+              {shownAppointments.map((a) => (
                 <GlassCard key={a.id} style={{ padding: 16 }}>
                   <View
                     style={{

@@ -364,7 +364,7 @@ type HealthLogContextValue = {
   removeAppointment: (id: string) => void;
   addMedication: (entry: Omit<MedicationEntry, 'id'>) => void;
   removeMedication: (id: string) => void;
-  takeMedicationDose: (id: string, time: string) => void;
+  takeMedicationDose: (id: string, time: string, dateIso?: string) => void;
   /** „Nem szedek gyógyszert” jelző; bekapcsolva a gyógyszerlista is ürül. */
   setNoMeds: (value: boolean) => void;
   /** Onboarding után: üres gyógyszerlista + a noMeds jelző beállítása. */
@@ -776,8 +776,10 @@ export function HealthLogProvider({
   );
 
   const takeMedicationDose = useCallback(
-    (id: string, time: string) => {
-      const today = toIsoDate(new Date());
+    // The date is explicit so a dose missed yesterday can still be ticked off
+    // on the day it belonged to, rather than landing on today.
+    (id: string, time: string, dateIso?: string) => {
+      const today = dateIso ?? toIsoDate(new Date());
       const key = medicationDoseKey(id, time);
       update((prev) => {
         const current = (prev.takenDoses ?? {})[today] ?? [];

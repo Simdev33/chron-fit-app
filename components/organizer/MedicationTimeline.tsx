@@ -12,6 +12,7 @@ import Animated, {
 import { font, violet } from '@/constants/figma';
 import {
   medicationDoseKey,
+  toIsoDate,
   useHealthLog,
   type MedicationEntry,
   isMedicationDueOn,
@@ -160,24 +161,32 @@ function TimelineCard({
   );
 }
 
-export function MedicationTimeline() {
+export function MedicationTimeline({
+  dateIso,
+}: {
+  /** Which day to show. Defaults to today when the caller has no selection. */
+  dateIso?: string;
+} = {}) {
   const { isDark } = useAppTheme();
   const { log, addMedication, takeMedicationDose } = useHealthLog();
   const [addOpen, setAddOpen] = useState(false);
   const refillAlerted = useRef(new Set<string>());
 
-  const takenToday = useMemo(() => {
-    const today = new Date();
-    const year = today.getFullYear();
-    const month = String(today.getMonth() + 1).padStart(2, '0');
-    const day = String(today.getDate()).padStart(2, '0');
-    return new Set(log.takenDoses?.[`${year}-${month}-${day}`] ?? []);
-  }, [log.takenDoses]);
+  const shownIso = dateIso ?? toIsoDate(new Date());
+  const shownDate = useMemo(
+    () => new Date(`${shownIso}T00:00:00`),
+    [shownIso],
+  );
+
+  const takenToday = useMemo(
+    () => new Set(log.takenDoses?.[shownIso] ?? []),
+    [log.takenDoses, shownIso],
+  );
 
   const meds = useMemo<TimelineMedication[]>(
     () =>
       log.medications
-        .filter((medication) => isMedicationDueOn(medication, new Date()))
+        .filter((medication) => isMedicationDueOn(medication, shownDate))
         .flatMap((medication) =>
         medication.times.map((time) => ({
           ...medication,
@@ -185,7 +194,7 @@ export function MedicationTimeline() {
           taken: takenToday.has(medicationDoseKey(medication.id, time)),
         })),
       ),
-    [log.medications, takenToday],
+    [log.medications, shownDate, takenToday],
   );
 
   const groupedMeds = useMemo(() => {
@@ -202,7 +211,7 @@ export function MedicationTimeline() {
       if (!item || item.taken) return;
 
       const newInventory = Math.max(0, item.inventoryRemaining - 1);
-      takeMedicationDose(id, time);
+      takeMedicationDose(id, time, shownIso);
 
       if (
         item.refillThreshold > 0 &&
@@ -215,7 +224,7 @@ export function MedicationTimeline() {
         );
       }
     },
-    [meds, takeMedicationDose],
+    [meds, shownIso, takeMedicationDose],
   );
 
   return (

@@ -3,23 +3,10 @@ import { StyleSheet, Text, View } from 'react-native';
 
 import { DayStrip } from '@/components/figma/DayStrip';
 import { GlassCard, usePalette } from '@/components/figma/ui';
+import { WorkoutDayCard } from '@/components/fitness/WorkoutDayCard';
 import { font } from '@/constants/figma';
+import { KIND_COLOR, KIND_LABEL } from '@/constants/workoutKind';
 import { useHealthLog } from '@/context/HealthLogContext';
-import type { WorkoutDayKind } from '@/types/workoutPlan';
-
-export const KIND_COLOR: Record<WorkoutDayKind, string> = {
-  strength: '#A78BFA',
-  cardio: '#F472B6',
-  'active-rest': '#34D399',
-  rest: 'rgba(148,163,184,0.7)',
-};
-
-export const KIND_LABEL: Record<WorkoutDayKind, string> = {
-  strength: 'Súlyzós',
-  cardio: 'Kardió',
-  'active-rest': 'Aktív pihenő',
-  rest: 'Pihenőnap',
-};
 
 /** Monday-first, matching how the rest of the app counts weekdays. */
 function mondayIndex(date: Date) {
@@ -109,51 +96,40 @@ export function WorkoutCalendar() {
 
       {selected && (selectedEntries.length || selectedPlan) ? (
         <View style={[styles.detail, { borderTopColor: p.divider }]}>
-          {!selectedEntries.length && selectedPlan ? (
-            <View style={styles.detailRow}>
-              <View
-                style={[
-                  styles.dot,
-                  styles.dotPlanned,
-                  { borderColor: KIND_COLOR[selectedPlan.kind], marginTop: 6 },
-                ]}
-              />
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.detailTitle, { color: p.text }]}>
-                  {selectedPlan.title}
-                </Text>
-                <Text style={[styles.detailMeta, { color: p.muted }]}>
-                  Tervezve · {KIND_LABEL[selectedPlan.kind]}
-                  {selectedPlan.durationMin
-                    ? ` · ${selectedPlan.durationMin} perc`
-                    : ''}
-                </Text>
-              </View>
-            </View>
+          {selectedPlan ? (
+            // The full card rather than a summary line, so the day can be
+            // opened, filled in and ticked off straight from the calendar.
+            <WorkoutDayCard
+              day={selectedPlan}
+              dateIso={selected}
+              defaultOpen
+            />
           ) : null}
 
-          {selectedEntries.map((entry) => (
-            <View key={entry.id} style={styles.detailRow}>
-              <View
-                style={[
-                  styles.dot,
-                  { backgroundColor: KIND_COLOR[entry.kind], marginTop: 6 },
-                ]}
-              />
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.detailTitle, { color: p.text }]}>
-                  {entry.title}
-                </Text>
-                <Text style={[styles.detailMeta, { color: p.muted }]}>
-                  {KIND_LABEL[entry.kind]}
-                  {entry.durationMin ? ` · ${entry.durationMin} perc` : ''}
-                  {entry.results.length
-                    ? ` · ${entry.results.length} gyakorlat`
-                    : ''}
-                </Text>
+          {selectedEntries
+            .filter((entry) => entry.planDayId !== selectedPlan?.id)
+            .map((entry) => (
+              <View key={entry.id} style={styles.detailRow}>
+                <View
+                  style={[
+                    styles.dot,
+                    { backgroundColor: KIND_COLOR[entry.kind], marginTop: 6 },
+                  ]}
+                />
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.detailTitle, { color: p.text }]}>
+                    {entry.title}
+                  </Text>
+                  <Text style={[styles.detailMeta, { color: p.muted }]}>
+                    {KIND_LABEL[entry.kind]}
+                    {entry.durationMin ? ` · ${entry.durationMin} perc` : ''}
+                    {entry.results.length
+                      ? ` · ${entry.results.length} gyakorlat`
+                      : ''}
+                  </Text>
+                </View>
               </View>
-            </View>
-          ))}
+            ))}
         </View>
       ) : null}
     </GlassCard>
