@@ -26,6 +26,16 @@ export type ImportedDocument = {
 };
 export type Phase = 'remission' | 'flare' | 'unknown';
 
+export type Sex = 'male' | 'female' | '';
+
+/** Harris-Benedict style activity bands, named as the profile shows them. */
+export type ActivityLevel =
+  | 'sedentary'
+  | 'light'
+  | 'moderate'
+  | 'high'
+  | '';
+
 /** Gyógyszer / vitamin / kiegészítő a kezdő dátummal. */
 export type SupplementEntry = {
   name: string;
@@ -49,6 +59,12 @@ export type Profile = {
   age: string;
   weightKg: string;
   heightCm: string;
+  /** Needed for the energy estimate; empty until answered. */
+  sex: Sex;
+  activityLevel: ActivityLevel;
+  /** Optional body composition, in kg. Sharpens the same estimate. */
+  smmKg: string;
+  bodyFatKg: string;
   avatarColorIdx: number;
   prescribedMeds: SupplementEntry[];
   biologics: SupplementEntry[];
@@ -99,6 +115,10 @@ const defaultProfile: Profile = {
   age: '',
   weightKg: '',
   heightCm: '',
+  sex: '',
+  activityLevel: '',
+  smmKg: '',
+  bodyFatKg: '',
   avatarColorIdx: 0,
   prescribedMeds: [],
   biologics: [],

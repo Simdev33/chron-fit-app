@@ -23,7 +23,10 @@ import { RECIPES } from '@/constants/figmaData';
 import { useFloraScene } from '@/context/FloraSceneContext';
 import { useTabBarSpacing } from '@/context/TabBarContext';
 import { useProfile } from '@/context/ProfileContext';
-import { computeNutritionTargets } from '@/utils/nutritionTargets';
+import {
+  computeNutritionTargets,
+  missingForTargets,
+} from '@/utils/nutritionTargets';
 import {
   mealTypeEmoji,
   mealTypeLabels,
@@ -342,8 +345,9 @@ export default function LifestyleScreen() {
               <GlassCard style={{ padding: 20, alignItems: 'center' }}>
                 <CalorieRing consumed={todayKcal} target={targets.calories} />
                 <Text style={[styles.estimateNote, { color: p.faint }]}>
-                  Becslés a korod, testsúlyod és magasságod alapján, enyhe
-                  aktivitással számolva. Nem fogyókúrás cél.
+                  {targets.basis === 'composition'
+                    ? 'Becslés a testösszetételed és az életmódod alapján. Nem fogyókúrás cél.'
+                    : 'Becslés a korod, nemed, testsúlyod, magasságod és életmódod alapján. Nem fogyókúrás cél.'}
                 </Text>
               </GlassCard>
             ) : (
@@ -352,8 +356,9 @@ export default function LifestyleScreen() {
                   Napi kalóriakeret
                 </Text>
                 <Text style={[styles.estimateNote, { color: p.muted, marginTop: 0 }]}>
-                  Add meg a korod, testsúlyod és magasságod a profilodban, és
-                  kiszámoljuk a napi keretedet meg a tápanyagcéljaidat.
+                  Még hiányzik: {missingForTargets(profile).join(', ')}. Add
+                  meg a profilodban, és kiszámoljuk a napi keretedet meg a
+                  tápanyagcéljaidat.
                 </Text>
               </GlassCard>
             )}

@@ -59,6 +59,7 @@ import {
 } from '@/context/HealthLogContext';
 import { useFloraScene } from '@/context/FloraSceneContext';
 import { useProfile } from '@/context/ProfileContext';
+import { missingForTargets } from '@/utils/nutritionTargets';
 import { useAppTheme } from '@/context/ThemeContext';
 import { useTabBarSpacing } from '@/context/TabBarContext';
 import { useTutorialTarget } from '@/context/TutorialContext';
@@ -253,10 +254,9 @@ export default function HomeScreen() {
   const router = useRouter();
 
   // Hiányzó profiladatok finom jelzése
-  const missingPersonal: string[] = [];
-  if (!profile.age.trim()) missingPersonal.push('életkor');
-  if (!profile.weightKg.trim()) missingPersonal.push('testsúly');
-  if (!profile.heightCm.trim()) missingPersonal.push('magasság');
+  // The same list the calorie estimate needs, so the two never disagree
+  // about what is still outstanding.
+  const missingPersonal = missingForTargets(profile);
   const medsMissing =
     log.medications.length === 0 &&
     !log.noMeds;

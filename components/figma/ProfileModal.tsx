@@ -40,6 +40,10 @@ import {
 import { DocumentImportSheet } from '@/components/figma/DocumentImportSheet';
 import { confirmDestructive } from '@/utils/confirmDialog';
 import { resetApp } from '@/utils/devReset';
+import {
+  ACTIVITY_OPTIONS,
+  SEX_OPTIONS,
+} from '@/utils/nutritionTargets';
 import { deleteDocument } from '@/utils/documentStore';
 import { AddMedicationModal } from '@/components/organizer/AddMedicationModal';
 import { AVATAR_COLORS, blue, font, violet } from '@/constants/figma';
@@ -140,6 +144,8 @@ export function ProfileModal({
   const [age, setAge] = useState(profile.age);
   const [weight, setWeight] = useState(profile.weightKg);
   const [height, setHeight] = useState(profile.heightCm);
+  const [smm, setSmm] = useState(profile.smmKg);
+  const [bodyFat, setBodyFat] = useState(profile.bodyFatKg);
   const [colorIdx, setColorIdx] = useState(profile.avatarColorIdx);
   const [condition, setCondition] = useState(
     diagnosisLabels[profile.diagnosis] ?? CONDITIONS[0],
@@ -169,6 +175,8 @@ export function ProfileModal({
     setAge(profile.age);
     setWeight(profile.weightKg);
     setHeight(profile.heightCm);
+    setSmm(profile.smmKg);
+    setBodyFat(profile.bodyFatKg);
     setColorIdx(profile.avatarColorIdx);
     setCondition(diagnosisLabels[profile.diagnosis] ?? CONDITIONS[0]);
     setTriggers(profile.triggerFoods);
@@ -211,6 +219,8 @@ export function ProfileModal({
       age,
       weightKg: weight,
       heightCm: height,
+      smmKg: smm,
+      bodyFatKg: bodyFat,
       // These used to live only in component state, so everything the user
       // entered here was thrown away the moment the sheet closed.
       resectedSegments: segments,
@@ -631,6 +641,75 @@ export function ProfileModal({
                 />
               </View>
             </View>
+
+            <View>
+              <Text style={smallLabel}>Nemed</Text>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                {SEX_OPTIONS.map((option) => (
+                  <ChoiceChip
+                    key={option.id}
+                    label={option.label}
+                    selected={profile.sex === option.id}
+                    onPress={() => updateProfile({ sex: option.id })}
+                  />
+                ))}
+              </View>
+            </View>
+
+            <View>
+              <Text style={smallLabel}>Életmód</Text>
+              <View style={{ gap: 8 }}>
+                {ACTIVITY_OPTIONS.map((option) => (
+                  <ChoiceChip
+                    key={option.id}
+                    label={option.label}
+                    hint={option.hint}
+                    selected={profile.activityLevel === option.id}
+                    onPress={() =>
+                      updateProfile({ activityLevel: option.id })
+                    }
+                  />
+                ))}
+              </View>
+            </View>
+
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={smallLabel}>Izomtömeg – SMM (kg)</Text>
+                <TextInput
+                  value={smm}
+                  onChangeText={setSmm}
+                  onBlur={() => updateProfile({ smmKg: smm })}
+                  placeholder="Nem kötelező"
+                  keyboardType="numeric"
+                  placeholderTextColor={p.placeholder}
+                  style={inputStyle}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={smallLabel}>Testzsír (kg)</Text>
+                <TextInput
+                  value={bodyFat}
+                  onChangeText={setBodyFat}
+                  onBlur={() => updateProfile({ bodyFatKg: bodyFat })}
+                  placeholder="Nem kötelező"
+                  keyboardType="numeric"
+                  placeholderTextColor={p.placeholder}
+                  style={inputStyle}
+                />
+              </View>
+            </View>
+            <Text
+              style={{
+                fontFamily: font.body,
+                fontSize: 11,
+                lineHeight: 15,
+                color: p.faint,
+              }}>
+              A testösszetételt egy okosmérleg szokta megadni. Ha beírod a
+              testzsírt, a kalóriakeretet abból számoljuk — az pontosabb,
+              mint a kor és magasság alapján becsülni.
+            </Text>
           </View>
 
           {/* Diagnózis */}
@@ -1528,6 +1607,89 @@ function ImportedDocumentCard({
         </Pressable>
       ) : null}
     </GlassCard>
+  );
+}
+
+/** The same radio look the diagnosis picker uses, in a reusable form. */
+function ChoiceChip({
+  label,
+  hint,
+  selected,
+  onPress,
+}: {
+  label: string;
+  hint?: string;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  const p = usePalette();
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="radio"
+      accessibilityState={{ selected }}
+      style={({ pressed }) => [
+        {
+          flex: hint ? undefined : 1,
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 12,
+          paddingHorizontal: 16,
+          paddingVertical: 12,
+          borderRadius: 16,
+          borderWidth: 2,
+          borderColor: selected ? violet[500] : p.fieldBorder,
+          backgroundColor: selected ? 'rgba(139,92,246,0.15)' : p.fieldBg,
+        },
+        pressed && { opacity: 0.75 },
+      ]}>
+      <View
+        style={{
+          width: 16,
+          height: 16,
+          borderRadius: 999,
+          borderWidth: 2,
+          alignItems: 'center',
+          justifyContent: 'center',
+          borderColor: selected
+            ? violet[500]
+            : p.dark
+              ? 'rgba(255,255,255,0.3)'
+              : '#D8B4FE',
+        }}>
+        {selected ? (
+          <View
+            style={{
+              width: 8,
+              height: 8,
+              borderRadius: 999,
+              backgroundColor: violet[500],
+            }}
+          />
+        ) : null}
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text
+          style={{
+            fontFamily: font.bodySemi,
+            fontSize: 14,
+            color: p.text,
+          }}>
+          {label}
+        </Text>
+        {hint ? (
+          <Text
+            style={{
+              fontFamily: font.body,
+              fontSize: 11,
+              color: p.muted,
+              marginTop: 1,
+            }}>
+            {hint}
+          </Text>
+        ) : null}
+      </View>
+    </Pressable>
   );
 }
 
