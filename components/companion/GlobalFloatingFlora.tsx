@@ -110,8 +110,9 @@ const BUBBLE_SCREEN_MARGIN = 12;
 const BUBBLE_TAIL_INSET = 18;
 const TUTORIAL_BUBBLE_MAX_W = 280;
 const CLOSE_TARGET_SIZE = 76;
-/** Length of the exit that plays when she is dropped on the X. */
+/** The exit that plays when she is dropped on the X, and its reverse. */
 const EXIT_MS = 260;
+const EXIT_SCALE = 0.18;
 const CLOSE_SNAP_DISTANCE = 88;
 // Mirrors the floating tab bar in app/(tabs)/_layout.tsx: its wrap sits at
 // bottom 0 with paddingBottom max(insets.bottom, 12) + 4, and the bar itself
@@ -738,25 +739,46 @@ export function GlobalFloatingFlora() {
     showFloraHint();
   }, [showFloraHint, updateProfile]);
 
-  // Park her back at the default spot while she is out of sight. Leaving the
-  // drag position over the drop zone would light the danger tint the moment
-  // she is brought back and grabbed again.
+  const onChatbotRoute =
+    pathname.includes('chatbot') || (segments as string[]).includes('chatbot');
+  // A dismissed Flora still has to appear for the tutorial, which speaks
+  // through her bubble and would otherwise be silent. Her entry follows what
+  // is actually on screen, not the stored flag, or she would stay invisible
+  // for the whole walkthrough.
+  const hidden = onChatbotRoute || (profile.floraHidden && !tutorialActive);
+
+  // Park her back at the default spot once she has been dismissed. Leaving the
+  // drag position over the drop zone would light the danger tint the moment she
+  // is brought back and grabbed again. This is deliberately tied to the
+  // dismissal and not to visibility, so a trip to the chatbot does not move her
+  // from wherever she was left.
   useEffect(() => {
     if (!profile.floraHidden) return;
     dragX.value = initialX;
     dragY.value = initialY;
-    exitScale.value = 1;
-    exitOpacity.value = 1;
     setEdge('right');
-  }, [
-    dragX,
-    dragY,
-    exitOpacity,
-    exitScale,
-    initialX,
-    initialY,
-    profile.floraHidden,
-  ]);
+  }, [dragX, dragY, initialX, initialY, profile.floraHidden]);
+
+  // Wind the exit values back up while she is off screen, so whatever brings
+  // her back plays the drop into the X in reverse.
+  useEffect(() => {
+    if (!hidden) return;
+    exitScale.value = EXIT_SCALE;
+    exitOpacity.value = 0;
+  }, [exitOpacity, exitScale, hidden]);
+
+  // Only after an absence -- on a first launch she is simply there.
+  const wasHidden = useRef(false);
+  useEffect(() => {
+    if (hidden) {
+      wasHidden.current = true;
+      return;
+    }
+    if (!wasHidden.current) return;
+    wasHidden.current = false;
+    exitScale.value = withSpring(1, { damping: 12, stiffness: 190 });
+    exitOpacity.value = withTiming(1, { duration: EXIT_MS });
+  }, [exitOpacity, exitScale, hidden]);
 
   // The dock rises from the bottom edge, clear of the floating tab bar.
   const closeDockBottom =
@@ -847,7 +869,7 @@ export function GlobalFloatingFlora() {
         const settle = { duration: EXIT_MS };
         dragX.value = withTiming(closeTargetX.value - FAB_W / 2, settle);
         dragY.value = withTiming(closeTargetY.value - FAB_H / 2, settle);
-        exitScale.value = withTiming(0.18, settle);
+        exitScale.value = withTiming(EXIT_SCALE, settle);
         exitOpacity.value = withTiming(0, settle, (finished) => {
           // Hiding her only once the exit has played keeps the component
           // mounted for its own animation.
@@ -885,12 +907,6 @@ export function GlobalFloatingFlora() {
     });
 
   const floraGesture = Gesture.Exclusive(panGesture, tapGesture);
-
-  const onChatbotRoute =
-    pathname.includes('chatbot') || (segments as string[]).includes('chatbot');
-  // A dismissed Flora still has to appear for the tutorial, which speaks
-  // through her bubble and would otherwise be silent.
-  const hidden = onChatbotRoute || (profile.floraHidden && !tutorialActive);
 
   if (hidden) return null;
 
