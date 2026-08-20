@@ -52,6 +52,8 @@ import {
   violet,
 } from '@/constants/figma';
 import {
+  MOOD_EMOJI,
+  MOOD_LABELS,
   estimateCalories,
   mealTypeLabels,
   medicationDoseKey,
@@ -185,6 +187,10 @@ const MEDICATION_MISS_REASONS: {
 ];
 
 type YesterdayJournal = {
+  mood: number | null;
+  fever: boolean;
+  jointPain: boolean;
+  nightWakings: number;
   pain: number;
   bowelMovements: number;
   bristol: number | null;
@@ -197,6 +203,10 @@ type YesterdayJournal = {
 };
 
 const INITIAL_JOURNAL: YesterdayJournal = {
+  mood: null,
+  fever: false,
+  jointPain: false,
+  nightWakings: 0,
   pain: 0,
   bowelMovements: 1,
   bristol: null,
@@ -257,12 +267,14 @@ export function SymptomSheet({
   onClose: () => void;
 }) {
   const p = usePalette();
-  const { log, saveYesterdayJournalForDate } = useHealthLog();
+  const { log, saveYesterdayJournalForDate, setMoodForDate } =
+    useHealthLog();
   const yesterday = new Date();
   yesterday.setDate(yesterday.getDate() - 1);
   const yesterdayIso = toIsoDate(yesterday);
   const yesterdayMeals = log.meals[yesterdayIso];
   const mealEntries = yesterdayMeals ?? [];
+  const savedMood = log.moods[yesterdayIso] ?? null;
   const existingJournal = (log.symptoms[yesterdayIso] ?? []).find(
     (entry) =>
       entry.journalKind === 'yesterday' ||
@@ -287,6 +299,10 @@ export function SymptomSheet({
             bowelMovements: existingJournal.bowelMovements ?? 1,
             bristol: existingJournal.bristol,
             blood: existingJournal.blood,
+            mood: savedMood ?? null,
+            fever: existingJournal.fever ?? false,
+            jointPain: existingJournal.jointPain ?? false,
+            nightWakings: existingJournal.nightWakings ?? 0,
             energy: existingJournal.energy ?? 3,
             medicationCompliance:
               existingJournal.medicationCompliance ?? null,
@@ -295,9 +311,13 @@ export function SymptomSheet({
             foodImpacts: savedImpacts,
             note: existingJournal.note,
           }
-        : { ...INITIAL_JOURNAL, foodImpacts: savedImpacts },
+        : {
+            ...INITIAL_JOURNAL,
+            mood: savedMood ?? null,
+            foodImpacts: savedImpacts,
+          },
     );
-  }, [existingJournal, visible, yesterdayMeals]);
+  }, [existingJournal, savedMood, visible, yesterdayMeals]);
 
   function updateJournal<K extends keyof YesterdayJournal>(
     key: K,
@@ -317,7 +337,11 @@ export function SymptomSheet({
   }
 
   const save = () => {
+    if (journal.mood !== null) setMoodForDate(yesterdayIso, journal.mood);
     saveYesterdayJournalForDate(yesterdayIso, {
+      fever: journal.fever,
+      jointPain: journal.jointPain,
+      nightWakings: journal.nightWakings,
       pain: journal.pain,
       bowelMovements: journal.bowelMovements,
       bristol: journal.bristol,
@@ -365,6 +389,140 @@ export function SymptomSheet({
             </View>
           </View>
         ) : null}
+
+        {/* Ugyanaz a hangulatválasztó, ami a kezdőlapon volt. */}
+        <View>
+          <FieldLabel>Hogy érezted magad tegnap?</FieldLabel>
+          <View
+            style={[
+              styles.moodCard,
+              { backgroundColor: p.fieldBg, borderColor: p.fieldBorder },
+            ]}>
+            {MOOD_EMOJI.map((emoji, idx) => {
+              const active = journal.mood === idx + 1;
+              return (
+                <Pressable
+                  key={idx}
+                  onPress={() => updateJournal('mood', idx + 1)}
+                  style={({ pressed }) => [
+                    { alignItems: 'center', gap: 4 },
+                    pressed && { transform: [{ scale: 0.9 }] },
+                  ]}>
+                  <Text
+                    style={{
+                      fontSize: 24,
+                      opacity: active ? 1 : 0.6,
+                      transform: [{ scale: active ? 1.25 : 1 }],
+                    }}>
+                    {emoji}
+                  </Text>
+                  <Text
+                    style={{
+                      fontSize: 9,
+                      fontFamily: font.bodyMedium,
+                      color: active ? violet[400] : p.muted,
+                    }}>
+                    {MOOD_LABELS[idx]}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+
+        <View
+          style={[
+            styles.toggleCard,
+            { backgroundColor: p.fieldBg, borderColor: p.fieldBorder },
+          ]}>
+          <View style={{ flex: 1 }}>
+            <Text
+              style={{ fontFamily: font.display, fontSize: 14, color: p.text }}>
+              Volt lázad?
+            </Text>
+            <Text
+              style={{ fontSize: 12, fontFamily: font.body, color: p.muted }}>
+              37,5 °C fölött
+            </Text>
+          </View>
+          <TogglePill
+            value={journal.fever}
+            onChange={(value) => updateJournal('fever', value)}
+          />
+        </View>
+
+        <View
+          style={[
+            styles.toggleCard,
+            { backgroundColor: p.fieldBg, borderColor: p.fieldBorder },
+          ]}>
+          <View style={{ flex: 1 }}>
+            <Text
+              style={{ fontFamily: font.display, fontSize: 14, color: p.text }}>
+              Ízületi fájdalom?
+            </Text>
+            <Text
+              style={{ fontSize: 12, fontFamily: font.body, color: p.muted }}>
+              Térd, csípő, boka vagy hát
+            </Text>
+          </View>
+          <TogglePill
+            value={journal.jointPain}
+            onChange={(value) => updateJournal('jointPain', value)}
+          />
+        </View>
+
+        <View>
+          <FieldLabel>Éjszakai felébredések száma</FieldLabel>
+          <View
+            style={[
+              styles.counter,
+              { backgroundColor: p.fieldBg, borderColor: p.fieldBorder },
+            ]}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Felébredések számának csökkentése"
+              disabled={journal.nightWakings === 0}
+              onPress={() =>
+                updateJournal(
+                  'nightWakings',
+                  Math.max(0, journal.nightWakings - 1),
+                )
+              }
+              style={({ pressed }) => [
+                styles.counterButton,
+                { backgroundColor: p.fieldBgStrong, borderColor: p.fieldBorder },
+                journal.nightWakings === 0 && { opacity: 0.35 },
+                pressed && { transform: [{ scale: 0.92 }] },
+              ]}>
+              <Minus size={22} color={violet[300]} />
+            </Pressable>
+            <View style={styles.counterValueWrap}>
+              <Text style={[styles.counterValue, { color: p.text }]}>
+                {journal.nightWakings}
+              </Text>
+              <Text style={[styles.counterUnit, { color: p.muted }]}>
+                alkalom
+              </Text>
+            </View>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Felébredések számának növelése"
+              onPress={() =>
+                updateJournal(
+                  'nightWakings',
+                  Math.min(20, journal.nightWakings + 1),
+                )
+              }
+              style={({ pressed }) => [
+                styles.counterButton,
+                styles.counterButtonActive,
+                pressed && { transform: [{ scale: 0.92 }] },
+              ]}>
+              <Plus size={22} color="#fff" />
+            </Pressable>
+          </View>
+        </View>
 
         <View>
           <View style={styles.rowBetween}>
@@ -1956,6 +2114,23 @@ const styles = StyleSheet.create({
   sliderTick: {
     fontSize: 10,
     fontFamily: font.body,
+  },
+  moodCard: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 14,
+  },
+  toggleCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderWidth: 1,
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
   },
   counter: {
     flexDirection: 'row',

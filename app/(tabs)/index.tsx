@@ -50,8 +50,6 @@ import {
 } from '@/constants/figma';
 import type { AppointmentEntry } from '@/context/HealthLogContext';
 import {
-  MOOD_EMOJI,
-  MOOD_LABELS,
   isMedicationDueOn,
   medicationDoseKey,
   toIsoDate,
@@ -192,7 +190,7 @@ export default function HomeScreen() {
   const { isDark, toggleTheme } = useAppTheme();
   const remission = profile.phase === 'remission';
 
-  const { log, setMoodForToday, takeMedicationDose } = useHealthLog();
+  const { log, takeMedicationDose } = useHealthLog();
   const now = new Date();
   const todayIso = toIsoDate(now);
   const yesterday = new Date();
@@ -204,7 +202,6 @@ export default function HomeScreen() {
       entry.bowelMovements !== undefined ||
       entry.medicationCompliance !== undefined,
   );
-  const mood = log.moods[todayIso] ?? null;
   // Picking times[0] meant the card still advertised the 8:00 dose at half
   // past nine. Today's doses are walked in order and the first one still
   // outstanding wins, so a missed dose stays on screen -- flagged as late
@@ -471,47 +468,6 @@ export default function HomeScreen() {
             </Pressable>
           </View>
         )}
-
-        {/* Hangulat */}
-        <View style={{ paddingHorizontal: 20, marginBottom: 20 }}>
-          <Text style={[styles.sectionLabel, { color: p.muted }]}>
-            Hogy érzed magad ma?
-          </Text>
-          <GlassCard style={{ padding: 16 }}>
-            <View
-              style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-              {MOOD_EMOJI.map((emoji, idx) => {
-                const active = mood === idx + 1;
-                return (
-                  <Pressable
-                    key={idx}
-                    onPress={() => setMoodForToday(idx + 1)}
-                    style={({ pressed }) => [
-                      { alignItems: 'center', gap: 4 },
-                      pressed && { transform: [{ scale: 0.9 }] },
-                    ]}>
-                    <Text
-                      style={{
-                        fontSize: 24,
-                        opacity: active ? 1 : 0.6,
-                        transform: [{ scale: active ? 1.25 : 1 }],
-                      }}>
-                      {emoji}
-                    </Text>
-                    <Text
-                      style={{
-                        fontSize: 9,
-                        fontFamily: font.bodyMedium,
-                        color: active ? violet[400] : p.muted,
-                      }}>
-                      {MOOD_LABELS[idx]}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </GlassCard>
-        </View>
 
         {/* Gyors műveletek */}
         <View

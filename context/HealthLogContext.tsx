@@ -29,6 +29,12 @@ export type SymptomEntry = {
   blood: boolean;
   bowelMovements?: number;
   energy?: number; // 1-5
+  /** Volt-e láz aznap. */
+  fever?: boolean;
+  /** Volt-e ízületi fájdalom aznap. */
+  jointPain?: boolean;
+  /** Hányszor ébredt fel éjjel. */
+  nightWakings?: number;
   medicationCompliance?: 'yes' | 'partial' | 'no' | null;
   medicationMissReason?: 'forgot' | 'left-home' | 'ran-out' | 'unknown' | null;
   foodImpacts?: FoodImpactEntry[];
@@ -355,7 +361,7 @@ export function toIsoDate(d: Date): string {
 type HealthLogContextValue = {
   ready: boolean;
   log: HealthLog;
-  setMoodForToday: (mood: number) => void;
+  setMoodForDate: (dateIso: string, mood: number) => void;
   addLabReport: (entry: Omit<LabReportEntry, 'id'>) => void;
   removeLabReport: (id: string) => void;
   addSymptomForToday: (
@@ -448,12 +454,13 @@ export function HealthLogProvider({
     });
   }, []);
 
-  const setMoodForToday = useCallback(
-    (mood: number) => {
-      const today = toIsoDate(new Date());
+  const setMoodForDate = useCallback(
+    // The mood picker moved to the yesterday journal, which records the day it
+    // is about rather than the day it is filled in on.
+    (dateIso: string, mood: number) => {
       update((prev) => ({
         ...prev,
-        moods: { ...prev.moods, [today]: mood },
+        moods: { ...prev.moods, [dateIso]: mood },
       }));
     },
     [update],
@@ -833,7 +840,7 @@ export function HealthLogProvider({
     () => ({
       ready,
       log,
-      setMoodForToday,
+      setMoodForDate,
       addSymptomForToday,
       addSymptomForDate,
       saveYesterdayJournalForDate,
@@ -856,7 +863,7 @@ export function HealthLogProvider({
     [
       ready,
       log,
-      setMoodForToday,
+      setMoodForDate,
       addSymptomForToday,
       addSymptomForDate,
       saveYesterdayJournalForDate,
