@@ -11,6 +11,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BackgroundWrapper } from '@/components/BackgroundWrapper';
+import { DayStrip } from '@/components/figma/DayStrip';
 import { MealSheet, WorkoutSheet } from '@/components/figma/sheets';
 import { FitnessPlanner } from '@/components/fitness/FitnessPlanner';
 import { EmptyState, GlassCard, usePalette } from '@/components/figma/ui';
@@ -26,11 +27,20 @@ import {
   useHealthLog,
 } from '@/context/HealthLogContext';
 
+/**
+ * The bars used to be four fixed numbers. The goals are still reference
+ * values, but what is eaten now comes from the meals logged that day.
+ */
 const NUTRITION = [
-  { label: 'Szénhidrát', cur: 145, goal: 200, color: '#8B5CF6' },
-  { label: 'Fehérje', cur: 62, goal: 80, color: '#A78BFA' },
-  { label: 'Zsír', cur: 38, goal: 55, color: '#C4B5FD' },
-  { label: 'Rost', cur: 12, goal: 20, color: '#7C3AED' },
+  { key: 'carbsG', label: 'Szénhidrát', goal: 200, color: '#8B5CF6' },
+  { key: 'proteinG', label: 'Fehérje', goal: 80, color: '#A78BFA' },
+  { key: 'fatG', label: 'Zsír', goal: 55, color: '#C4B5FD' },
+  { key: 'fiberG', label: 'Rost', goal: 20, color: '#7C3AED' },
+] as const;
+
+const MONTH_SHORT = [
+  'jan.', 'febr.', 'márc.', 'ápr.', 'máj.', 'jún.',
+  'júl.', 'aug.', 'szept.', 'okt.', 'nov.', 'dec.',
 ];
 
 const WEEKLY = [
@@ -71,8 +81,25 @@ export default function LifestyleScreen() {
   }, [tab, setLifestylePane]);
   const { log, removeMeal } = useHealthLog();
   const todayIso = toIsoDate(new Date());
-  const todayMeals = log.meals[todayIso] ?? [];
+  const [dietDate, setDietDate] = useState(todayIso);
+
+  const todayMeals = log.meals[dietDate] ?? [];
   const todayKcal = todayMeals.reduce((sum, m) => sum + (m.calories ?? 0), 0);
+
+  // Only meals that carry a macro contribute; a blank field is unknown, not
+  // zero, and counting it as zero would quietly understate the day.
+  const macroTotals = NUTRITION.map((macro) => ({
+    ...macro,
+    cur: todayMeals.reduce((sum, meal) => sum + (meal[macro.key] ?? 0), 0),
+  }));
+
+  const dietDayLabel =
+    dietDate === todayIso
+      ? 'Mai étkezések'
+      : (() => {
+          const [, month, day] = dietDate.split('-').map(Number);
+          return `${MONTH_SHORT[month - 1]} ${day}. étkezései`;
+        })();
 
   return (
     <BackgroundWrapper variant="lifestyle">
@@ -263,7 +290,7 @@ export default function LifestyleScreen() {
                         fontFamily: font.bodySemi,
                         color: p.muted,
                       }}>
-                      Ma összesen
+                      {dietDate === todayIso ? 'Ma összesen' : 'Aznap összesen'}
                     </Text>
                     <Text
                       style={{
@@ -278,13 +305,13 @@ export default function LifestyleScreen() {
               )}
             </View>
 
-            {/* Napi tápanyagcélok */}
+            {/* Napi bevitt tápanyagok */}
             <GlassCard style={{ padding: 20 }}>
               <Text style={[styles.cardLabel, { color: p.muted }]}>
-                Napi tápanyagcélok
+                Napi bevitt tápanyagok
               </Text>
               <View style={{ gap: 12 }}>
-                {NUTRITION.map((n) => (
+                {macroTotals.map((n) => (
                   <View key={n.label}>
                     <View style={styles.rowBetween}>
                       <Text
@@ -431,7 +458,11 @@ export default function LifestyleScreen() {
         visible={workoutOpen}
         onClose={() => setWorkoutOpen(false)}
       />
-      <MealSheet visible={mealOpen} onClose={() => setMealOpen(false)} />
+      <MealSheet
+        visible={mealOpen}
+        onClose={() => setMealOpen(false)}
+        dateIso={dietDate}
+      />
     </BackgroundWrapper>
   );
 }

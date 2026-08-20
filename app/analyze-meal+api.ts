@@ -22,6 +22,9 @@ const SYSTEM_INSTRUCTION = `
 - Nevezd meg magyarul, röviden, mi látható a tányéron. Például: "Sült lazac rizzsel".
 - Becsüld meg a képen látható adag kalóriatartalmát. Egész szám legyen.
 - Becsüld meg az adag méretét is: small, medium vagy large.
+- Becsüld meg az adag makrotápanyagait grammban: szénhidrát, fehérje, zsír és
+  rost. Egész számok legyenek, és nagyjából álljanak összhangban a becsült
+  kalóriával.
 - Ha a képen nem étel vagy ital van, vagy nem tudod megnevezni, akkor a recognized mező
   legyen false, a name pedig üres string.
 - Ne írj magyarázatot, ne tegyél hozzá tanácsot, csak a kért mezőket töltsd ki.
@@ -60,6 +63,14 @@ function isRateLimited(request: Request) {
   }
   current.count += 1;
   return current.count > RATE_LIMIT_REQUESTS;
+}
+
+/** A plausible portion, or nothing -- a wild number is worse than a blank. */
+function clampGrams(value: unknown): number | undefined {
+  const grams = Math.round(Number(value));
+  return Number.isFinite(grams) && grams >= 0 && grams <= 500
+    ? grams
+    : undefined;
 }
 
 function clampPortion(value: unknown): MealPhotoAnalysis['portion'] {
@@ -107,7 +118,7 @@ export async function POST(request: Request) {
       config: {
         systemInstruction: SYSTEM_INSTRUCTION,
         temperature: 0.2,
-        maxOutputTokens: 200,
+        maxOutputTokens: 300,
         responseMimeType: 'application/json',
         responseSchema: {
           type: Type.OBJECT,
@@ -119,8 +130,22 @@ export async function POST(request: Request) {
               type: Type.STRING,
               enum: ['small', 'medium', 'large'],
             },
+            carbsG: { type: Type.INTEGER },
+            proteinG: { type: Type.INTEGER },
+            fatG: { type: Type.INTEGER },
+            fiberG: { type: Type.INTEGER },
           },
-          required: ['recognized', 'name', 'calories', 'portion'],
+          // Every field is required, or the optional ones get dropped.
+          required: [
+            'recognized',
+            'name',
+            'calories',
+            'portion',
+            'carbsG',
+            'proteinG',
+            'fatG',
+            'fiberG',
+          ],
         },
       },
     });
@@ -145,6 +170,10 @@ export async function POST(request: Request) {
     return json({
       recognized: true,
       name: parsed.name.trim().slice(0, 80),
+      carbsG: clampGrams(parsed.carbsG),
+      proteinG: clampGrams(parsed.proteinG),
+      fatG: clampGrams(parsed.fatG),
+      fiberG: clampGrams(parsed.fiberG),
       // A wild number helps nobody; fall back rather than store nonsense.
       calories:
         Number.isFinite(calories) && calories > 0 && calories < 5000

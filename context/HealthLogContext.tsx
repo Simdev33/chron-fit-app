@@ -38,7 +38,15 @@ export type SymptomEntry = {
 export type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack';
 export type Portion = 'small' | 'medium' | 'large';
 
-export type MealEntry = {
+/** Grams of each macro in a portion. Absent on meals logged before these. */
+export type MealMacros = {
+  carbsG?: number;
+  proteinG?: number;
+  fatG?: number;
+  fiberG?: number;
+};
+
+export type MealEntry = MealMacros & {
   id: string;
   time: string; // "HH:MM"
   name: string;
@@ -358,7 +366,10 @@ type HealthLogContextValue = {
     date: string,
     entry: Omit<SymptomEntry, 'id' | 'time'>,
   ) => void;
-  addMealForToday: (entry: Omit<MealEntry, 'id' | 'time'>) => void;
+  addMeal: (
+    entry: Omit<MealEntry, 'id' | 'time'>,
+    dateIso?: string,
+  ) => void;
   removeMeal: (date: string, id: string) => void;
   addAppointment: (entry: Omit<AppointmentEntry, 'id'>) => void;
   removeAppointment: (id: string) => void;
@@ -554,10 +565,12 @@ export function HealthLogProvider({
     [update],
   );
 
-  const addMealForToday = useCallback(
-    (entry: Omit<MealEntry, 'id' | 'time'>) => {
+  const addMeal = useCallback(
+    // The date is explicit so a meal forgotten yesterday can be logged
+    // against yesterday rather than landing on today.
+    (entry: Omit<MealEntry, 'id' | 'time'>, dateIso?: string) => {
       const now = new Date();
-      const today = toIsoDate(now);
+      const target = dateIso ?? toIsoDate(now);
       const full: MealEntry = {
         ...entry,
         id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -569,7 +582,7 @@ export function HealthLogProvider({
         ...prev,
         meals: {
           ...prev.meals,
-          [today]: [...(prev.meals[today] ?? []), full],
+          [target]: [...(prev.meals[target] ?? []), full],
         },
       }));
     },
@@ -817,7 +830,7 @@ export function HealthLogProvider({
       saveYesterdayJournalForDate,
       addLabReport,
       removeLabReport,
-      addMealForToday,
+      addMeal,
       removeMeal,
       addAppointment,
       removeAppointment,
@@ -840,7 +853,7 @@ export function HealthLogProvider({
       saveYesterdayJournalForDate,
       addLabReport,
       removeLabReport,
-      addMealForToday,
+      addMeal,
       removeMeal,
       addAppointment,
       removeAppointment,

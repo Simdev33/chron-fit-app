@@ -811,21 +811,50 @@ export function SymptomSheet({
 /* Étkezés rögzítése                                                   */
 /* ------------------------------------------------------------------ */
 
+/** The four macros, in the order they are shown. */
+const MACRO_FIELDS = [
+  { key: 'carbsG', label: 'Szénhidrát' },
+  { key: 'proteinG', label: 'Fehérje' },
+  { key: 'fatG', label: 'Zsír' },
+  { key: 'fiberG', label: 'Rost' },
+] as const;
+
+type MacroKey = (typeof MACRO_FIELDS)[number]['key'];
+
+/** Blank stays blank: an unknown macro is not the same as zero grams. */
+function parseMacros(values: Record<MacroKey, string>) {
+  const out: Partial<Record<MacroKey, number>> = {};
+  MACRO_FIELDS.forEach(({ key }) => {
+    const grams = parseInt(values[key], 10);
+    if (!Number.isNaN(grams) && grams >= 0) out[key] = grams;
+  });
+  return out;
+}
+
 export function MealSheet({
   visible,
   onClose,
+  dateIso,
 }: {
   visible: boolean;
   onClose: () => void;
+  /** Which day the meal is logged against. Defaults to today. */
+  dateIso?: string;
 }) {
   const p = usePalette();
-  const { addMealForToday } = useHealthLog();
+  const { addMeal } = useHealthLog();
   const [name, setName] = useState('');
   const [portion, setPortion] = useState<'small' | 'medium' | 'large'>(
     'medium',
   );
   const [mealType, setMealType] = useState<MealType>('lunch');
   const [customKcal, setCustomKcal] = useState('');
+  const [macros, setMacros] = useState<Record<MacroKey, string>>({
+    carbsG: '',
+    proteinG: '',
+    fatG: '',
+    fiberG: '',
+  });
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [photoError, setPhotoError] = useState<string | null>(null);
@@ -861,6 +890,12 @@ export function MealSheet({
       setName(result.name);
       setPortion(result.portion);
       if (result.calories > 0) setCustomKcal(String(result.calories));
+      setMacros({
+        carbsG: result.carbsG === undefined ? '' : String(result.carbsG),
+        proteinG: result.proteinG === undefined ? '' : String(result.proteinG),
+        fatG: result.fatG === undefined ? '' : String(result.fatG),
+        fiberG: result.fiberG === undefined ? '' : String(result.fiberG),
+      });
     } catch (error) {
       setPhotoError(
         error instanceof Error
@@ -891,6 +926,7 @@ export function MealSheet({
     setPortion('medium');
     setMealType('lunch');
     setCustomKcal('');
+    setMacros({ carbsG: '', proteinG: '', fatG: '', fiberG: '' });
     setPhotoUri(null);
     setPhotoError(null);
   };
@@ -903,7 +939,16 @@ export function MealSheet({
   };
 
   const save = () => {
-    addMealForToday({ name: name.trim(), portion, mealType, calories });
+    addMeal(
+      {
+        name: name.trim(),
+        portion,
+        mealType,
+        calories,
+        ...parseMacros(macros),
+      },
+      dateIso,
+    );
     reset();
     onClose();
   };
@@ -1156,6 +1201,52 @@ export function MealSheet({
             }}>
             A becslés az étel neve és az adag mérete alapján készül. Ha
             pontosan tudod az értéket, írd be a mezőbe.
+          </Text>
+        </View>
+
+        <View style={{ marginBottom: 24 }}>
+          <FieldLabel>Tápanyagok (gramm)</FieldLabel>
+          <View style={styles.macroRow}>
+            {MACRO_FIELDS.map((field) => (
+              <View key={field.key} style={styles.macroCell}>
+                <Text style={[styles.macroLabel, { color: p.faint }]}>
+                  {field.label}
+                </Text>
+                <TextInput
+                  value={macros[field.key]}
+                  onChangeText={(value) =>
+                    setMacros((current) => ({
+                      ...current,
+                      [field.key]: value,
+                    }))
+                  }
+                  keyboardType="number-pad"
+                  maxLength={3}
+                  placeholder="–"
+                  placeholderTextColor={p.placeholder}
+                  style={[
+                    styles.macroInput,
+                    {
+                      color: p.text,
+                      backgroundColor: p.fieldBgStrong,
+                      borderColor: macros[field.key]
+                        ? violet[500]
+                        : p.fieldBorder,
+                    },
+                  ]}
+                />
+              </View>
+            ))}
+          </View>
+          <Text
+            style={{
+              fontSize: 11,
+              fontFamily: font.body,
+              color: p.faint,
+              marginTop: 6,
+            }}>
+            Fotóról automatikusan kitöltjük. Üresen hagyva az étel nem számít
+            bele a napi összesítésbe.
           </Text>
         </View>
 
@@ -1816,6 +1907,27 @@ const styles = StyleSheet.create({
     padding: 14,
     borderRadius: 16,
     borderWidth: 1,
+  },
+  macroRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  macroCell: {
+    flex: 1,
+    gap: 4,
+  },
+  macroLabel: {
+    fontFamily: font.bodySemi,
+    fontSize: 10,
+    textAlign: 'center',
+  },
+  macroInput: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingVertical: 10,
+    textAlign: 'center',
+    fontFamily: font.bodySemi,
+    fontSize: 14,
   },
   kcalInput: {
     width: 90,

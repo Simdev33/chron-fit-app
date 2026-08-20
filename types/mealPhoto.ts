@@ -1,11 +1,11 @@
-import type { Portion } from '@/context/HealthLogContext';
+import type { MealMacros, Portion } from '@/context/HealthLogContext';
 
 export type MealPhotoRequest = {
   /** JPEG image, base64 encoded, without the data: prefix. */
   imageBase64: string;
 };
 
-export type MealPhotoAnalysis = {
+export type MealPhotoAnalysis = MealMacros & {
   /** False when the picture does not show food we can name. */
   recognized: boolean;
   /** Hungarian dish name, e.g. "Sült lazac rizzsel". */
