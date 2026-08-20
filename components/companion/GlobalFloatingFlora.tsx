@@ -255,51 +255,125 @@ function NativeFloraVideo({
   onEnded: () => void;
 }) {
   // Flora's clip swaps whenever she changes look or flips between idle and
-  // action. Passing the live source to the hook makes it build a new player and
-  // release the old one on every swap, and the view can end up holding the
-  // released one. Keeping one player and swapping its source avoids that race.
+  // action, and a tab change does both in a row. Swapping the source on a
+  // single player leaves its surface empty until the new clip decodes a frame,
+  // and the stage behind it is nearly black, so the orb blinked every time.
+  //
+  // Two players take turns instead. The next clip loads into the hidden one
+  // and only becomes visible once it has actually drawn something, while the
+  // outgoing one stays on screen holding its last frame. Both are created once
+  // and never released, which is what kept the old single-player version from
+  // handing the view an already-released object.
   const initialSource = useRef(source).current;
-  const appliedSource = useRef(source);
 
-  const player = useVideoPlayer(initialSource, (instance) => {
+  const playerA = useVideoPlayer(initialSource, (instance) => {
     instance.loop = loop;
     instance.muted = true;
     instance.play();
   });
+  const playerB = useVideoPlayer(initialSource, (instance) => {
+    instance.loop = loop;
+    instance.muted = true;
+  });
+
+  const [active, setActive] = useState<'a' | 'b'>('a');
+  const activeRef = useRef<'a' | 'b'>('a');
+  const pending = useRef<'a' | 'b' | null>(null);
+  const appliedSource = useRef(initialSource);
+  const swapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const reveal = useCallback((slot: 'a' | 'b') => {
+    if (pending.current !== slot) return;
+    pending.current = null;
+    if (swapTimer.current) {
+      clearTimeout(swapTimer.current);
+      swapTimer.current = null;
+    }
+    activeRef.current = slot;
+    setActive(slot);
+  }, []);
 
   useEffect(() => {
-    player.loop = loop;
+    const current = activeRef.current === 'a' ? playerA : playerB;
+    current.loop = loop;
+
     if (appliedSource.current === source) return;
     appliedSource.current = source;
-    player
+
+    const slot = activeRef.current === 'a' ? 'b' : 'a';
+    const next = slot === 'a' ? playerA : playerB;
+    pending.current = slot;
+    next.loop = loop;
+
+    next
       .replaceAsync(source)
-      .then(() => player.play())
+      .then(() => {
+        next.play();
+        // onFirstFrameRender is the real cue, but a clip that never reports one
+        // must not leave her frozen on the previous outfit for good.
+        if (swapTimer.current) clearTimeout(swapTimer.current);
+        swapTimer.current = setTimeout(() => reveal(slot), 700);
+      })
       .catch(() => {
+        pending.current = null;
         // A clip that will not load should not strand her mid-animation.
         onEnded();
       });
-  }, [loop, onEnded, player, source]);
+  }, [loop, onEnded, playerA, playerB, reveal, source]);
 
-  useEventListener(player, 'playToEnd', () => {
-    if (!loop) onEnded();
+  // The one that is no longer shown keeps its last frame but stops decoding.
+  useEffect(() => {
+    const previous = active === 'a' ? playerB : playerA;
+    previous.pause();
+  }, [active, playerA, playerB]);
+
+  useEffect(
+    () => () => {
+      if (swapTimer.current) clearTimeout(swapTimer.current);
+    },
+    [],
+  );
+
+  useEventListener(playerA, 'playToEnd', () => {
+    if (activeRef.current === 'a' && !loop) onEnded();
+  });
+  useEventListener(playerB, 'playToEnd', () => {
+    if (activeRef.current === 'b' && !loop) onEnded();
   });
 
-  useEventListener(player, 'statusChange', ({ status }) => {
-    if (status === 'error') onEnded();
+  useEventListener(playerA, 'statusChange', ({ status }) => {
+    if (status === 'error' && activeRef.current === 'a') onEnded();
   });
+  useEventListener(playerB, 'statusChange', ({ status }) => {
+    if (status === 'error' && activeRef.current === 'b') onEnded();
+  });
+
+  const slotProps = {
+    style: [StyleSheet.absoluteFill, styles.nativeVideo],
+    contentFit: 'cover' as const,
+    nativeControls: false,
+    // Without this the shutter blanks the view to black before the first frame.
+    useExoShutter: false,
+    // A SurfaceView draws in its own layer, so it cannot be stacked or faded
+    // and it lags behind the orb while she is dragged.
+    surfaceType: 'textureView' as const,
+  };
 
   return (
-    <VideoView
-      player={player}
-      style={[StyleSheet.absoluteFill, styles.nativeVideo]}
-      contentFit="cover"
-      nativeControls={false}
-      // Without this the shutter blanks the circle to black between clips.
-      useExoShutter={false}
-      // A SurfaceView draws in its own layer, so it lags behind the orb while
-      // she is dragged and does not follow the rounded clip.
-      surfaceType="textureView"
-    />
+    <>
+      <VideoView
+        {...slotProps}
+        player={playerA}
+        style={[slotProps.style, active === 'a' ? null : styles.hiddenSlot]}
+        onFirstFrameRender={() => reveal('a')}
+      />
+      <VideoView
+        {...slotProps}
+        player={playerB}
+        style={[slotProps.style, active === 'b' ? null : styles.hiddenSlot]}
+        onFirstFrameRender={() => reveal('b')}
+      />
+    </>
   );
 }
 
@@ -1117,6 +1191,9 @@ const styles = StyleSheet.create({
     borderTopColor: 'transparent',
     borderBottomWidth: 9,
     borderBottomColor: 'rgba(18, 10, 36, 0.92)',
+  },
+  hiddenSlot: {
+    opacity: 0,
   },
   nativeVideo: {
     backgroundColor: 'transparent',
