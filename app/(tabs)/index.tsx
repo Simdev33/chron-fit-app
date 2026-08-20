@@ -59,6 +59,7 @@ import {
 import { useFloraScene } from '@/context/FloraSceneContext';
 import { useProfile } from '@/context/ProfileContext';
 import { useAppTheme } from '@/context/ThemeContext';
+import { useTabBarSpacing } from '@/context/TabBarContext';
 import { useTutorialTarget } from '@/context/TutorialContext';
 
 type SheetKind = 'symptoms' | 'meal' | 'workout' | 'medication' | null;
@@ -110,6 +111,7 @@ const HINT_TAIL_RIGHT =
 export default function HomeScreen() {
   const p = usePalette();
   const insets = useSafeAreaInsets();
+  const tabBarSpacing = useTabBarSpacing();
   const { profile, updateProfile } = useProfile();
   const { floraHint, hideFloraHint } = useFloraScene();
   const hintOpacity = useSharedValue(0);
@@ -189,7 +191,7 @@ export default function HomeScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{
           paddingTop: insets.top + 16,
-          paddingBottom: 140,
+          paddingBottom: tabBarSpacing,
         }}>
         {/* Fejléc */}
         <View

@@ -23,10 +23,12 @@ import { MedicationTimeline } from '@/components/organizer/MedicationTimeline';
 import { font, fuchsia400, violet } from '@/constants/figma';
 import { WEEK } from '@/constants/figmaData';
 import { useHealthLog } from '@/context/HealthLogContext';
+import { useTabBarSpacing } from '@/context/TabBarContext';
 
 export default function ScheduleScreen() {
   const p = usePalette();
   const insets = useSafeAreaInsets();
+  const tabBarSpacing = useTabBarSpacing();
   const { log, removeAppointment } = useHealthLog();
   const [selectedDate, setSelectedDate] = useState(13);
   const [addOpen, setAddOpen] = useState(false);
@@ -47,7 +49,7 @@ export default function ScheduleScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{
           paddingTop: insets.top + 16,
-          paddingBottom: 140,
+          paddingBottom: tabBarSpacing,
         }}>
         <View style={{ paddingHorizontal: 20, paddingBottom: 20 }}>
           <Text

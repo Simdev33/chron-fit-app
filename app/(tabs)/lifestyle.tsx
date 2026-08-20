@@ -16,6 +16,7 @@ import { EmptyState, GlassCard, usePalette } from '@/components/figma/ui';
 import { font, violet } from '@/constants/figma';
 import { RECIPES } from '@/constants/figmaData';
 import { useFloraScene } from '@/context/FloraSceneContext';
+import { useTabBarSpacing } from '@/context/TabBarContext';
 import {
   mealTypeEmoji,
   mealTypeLabels,
@@ -58,6 +59,7 @@ const WORKOUTS = [
 export default function LifestyleScreen() {
   const p = usePalette();
   const insets = useSafeAreaInsets();
+  const tabBarSpacing = useTabBarSpacing();
   const [tab, setTab] = useState<'diet' | 'fitness'>('diet');
   const [workoutOpen, setWorkoutOpen] = useState(false);
   const [mealOpen, setMealOpen] = useState(false);
@@ -77,7 +79,7 @@ export default function LifestyleScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{
           paddingTop: insets.top + 16,
-          paddingBottom: 140,
+          paddingBottom: tabBarSpacing,
         }}>
         <View style={{ paddingHorizontal: 20, paddingBottom: 20 }}>
           <Text

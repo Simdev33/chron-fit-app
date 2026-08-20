@@ -14,6 +14,10 @@ import { GlobalFloatingFlora } from '@/components/companion/GlobalFloatingFlora'
 import { usePalette } from '@/components/figma/ui';
 import { TutorialManager } from '@/components/tutorial/TutorialManager';
 import { font, violet } from '@/constants/figma';
+import {
+  TabBarHeightProvider,
+  useTabBarMeasurement,
+} from '@/context/TabBarContext';
 import { useTutorial } from '@/context/TutorialContext';
 
 export const unstable_settings = {
@@ -52,10 +56,12 @@ function FigmaTabBar({ state, navigation }: TabBarProps) {
   const p = usePalette();
   const insets = useSafeAreaInsets();
   const { registerTarget } = useTutorial();
+  const reportHeight = useTabBarMeasurement();
 
   return (
     <View
       pointerEvents="box-none"
+      onLayout={(event) => reportHeight?.(event.nativeEvent.layout.height)}
       style={[styles.wrap, { paddingBottom: Math.max(insets.bottom, 12) + 4 }]}>
       <View
         style={[
@@ -127,20 +133,22 @@ function FigmaTabBar({ state, navigation }: TabBarProps) {
 
 export default function TabLayout() {
   return (
-    <View style={{ flex: 1 }}>
-      <Tabs
-        tabBar={(props) => <FigmaTabBar {...props} />}
-        screenOptions={{
-          headerShown: false,
-        }}>
-        <Tabs.Screen name="index" />
-        <Tabs.Screen name="lifestyle" />
-        <Tabs.Screen name="schedule" />
-        <Tabs.Screen name="medical" />
-      </Tabs>
-      <GlobalFloatingFlora />
-      <TutorialManager />
-    </View>
+    <TabBarHeightProvider>
+      <View style={{ flex: 1 }}>
+        <Tabs
+          tabBar={(props) => <FigmaTabBar {...props} />}
+          screenOptions={{
+            headerShown: false,
+          }}>
+          <Tabs.Screen name="index" />
+          <Tabs.Screen name="lifestyle" />
+          <Tabs.Screen name="schedule" />
+          <Tabs.Screen name="medical" />
+        </Tabs>
+        <GlobalFloatingFlora />
+        <TutorialManager />
+      </View>
+    </TabBarHeightProvider>
   );
 }
 

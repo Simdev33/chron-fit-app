@@ -32,6 +32,7 @@ import {
   type LabStatus,
 } from '@/context/HealthLogContext';
 import { useProfile } from '@/context/ProfileContext';
+import { useTabBarSpacing } from '@/context/TabBarContext';
 import {
   exportHealthReport,
   type ExportMode,
@@ -74,6 +75,7 @@ function shortDate(iso: string) {
 export default function MedicalScreen() {
   const p = usePalette();
   const insets = useSafeAreaInsets();
+  const tabBarSpacing = useTabBarSpacing();
   const [profileOpen, setProfileOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [labSheetOpen, setLabSheetOpen] = useState(false);
@@ -147,7 +149,7 @@ export default function MedicalScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{
           paddingTop: insets.top + 16,
-          paddingBottom: 140,
+          paddingBottom: tabBarSpacing,
         }}>
         <View style={styles.headerRow}>
           <View style={{ flex: 1 }}>
