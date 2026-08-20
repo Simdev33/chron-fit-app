@@ -2,6 +2,13 @@
 
 export type WorkoutDayKind = 'strength' | 'cardio' | 'active-rest' | 'rest';
 
+/**
+ * What is worth writing down for an exercise. A walk is measured in minutes,
+ * ankle circles in repetitions, a squat in repetitions and weight -- offering
+ * all three everywhere just leaves empty boxes.
+ */
+export type ExerciseTracking = 'reps-weight' | 'reps' | 'duration';
+
 export type PlannedExercise = {
   /** Stable within a plan, so logged reps stay attached to the right row. */
   id: string;
@@ -11,6 +18,8 @@ export type PlannedExercise = {
   reps: string;
   /** Short cue or substitution, e.g. "lassú leengedés". */
   note?: string;
+  /** Absent on plans generated before tracking became per-exercise. */
+  track?: ExerciseTracking;
 };
 
 export type PlannedDay = {

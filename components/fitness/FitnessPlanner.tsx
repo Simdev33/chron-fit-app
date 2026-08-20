@@ -24,8 +24,13 @@ import {
 import { font, violet } from '@/constants/figma';
 import { toIsoDate, useHealthLog } from '@/context/HealthLogContext';
 import { useProfile } from '@/context/ProfileContext';
-import type { PlannedDay } from '@/types/workoutPlan';
+import type {
+  PlannedDay,
+  PlannedExercise,
+  WorkoutDayKind,
+} from '@/types/workoutPlan';
 import { buildUserContext } from '@/utils/buildUserContext';
+import { resolveTracking } from '@/utils/exerciseTracking';
 import { planWorkout } from '@/utils/planWorkout';
 
 const WEEKDAY_FULL = [
@@ -44,84 +49,115 @@ const EXAMPLES = [
   'Otthon edzenék, eszköz nélkül, napi 20 percben.',
 ];
 
+/** One numeric box; which ones appear depends on the exercise. */
+function ResultField({
+  label,
+  value,
+  onChange,
+  locked,
+  decimal,
+}: {
+  label: string;
+  value: string;
+  onChange: (next: string) => void;
+  locked: boolean;
+  decimal?: boolean;
+}) {
+  const p = usePalette();
+  return (
+    <View style={styles.inputWrap}>
+      <Text style={[styles.inputLabel, { color: p.faint }]}>{label}</Text>
+      <TextInput
+        value={value}
+        onChangeText={onChange}
+        editable={!locked}
+        keyboardType={decimal ? 'decimal-pad' : 'number-pad'}
+        placeholder="–"
+        placeholderTextColor={p.placeholder}
+        style={[
+          styles.input,
+          {
+            backgroundColor: p.fieldBg,
+            borderColor: p.fieldBorder,
+            color: p.text,
+            opacity: locked ? 0.6 : 1,
+          },
+        ]}
+      />
+    </View>
+  );
+}
+
 function ExerciseRow({
-  exerciseId,
-  name,
-  sets,
-  reps,
-  note,
+  exercise,
+  kind,
   locked,
 }: {
-  exerciseId: string;
-  name: string;
-  sets: string;
-  reps: string;
-  note?: string;
+  exercise: PlannedExercise;
+  kind: WorkoutDayKind;
   locked: boolean;
 }) {
   const p = usePalette();
   const { log, setExerciseResult } = useHealthLog();
-  const stored = log.exerciseLog[exerciseId] ?? { reps: '', weightKg: '' };
+  const stored = log.exerciseLog[exercise.id] ?? {
+    reps: '',
+    weightKg: '',
+    minutes: '',
+  };
 
-  const update = (patch: { reps?: string; weightKg?: string }) => {
-    setExerciseResult(exerciseId, { ...stored, ...patch });
+  // Offering reps and kilos next to a walk just left two boxes nobody could
+  // fill in. What is worth recording comes from the exercise itself.
+  const track = resolveTracking(exercise, kind);
+
+  const update = (patch: Partial<typeof stored>) => {
+    setExerciseResult(exercise.id, { ...stored, ...patch });
   };
 
   return (
     <View style={[styles.exercise, { borderTopColor: p.dividerSoft }]}>
       <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={[styles.exerciseName, { color: p.text }]}>{name}</Text>
-        <Text style={[styles.exerciseMeta, { color: p.muted }]}>
-          {sets} sorozat · {reps} ismétlés
+        <Text style={[styles.exerciseName, { color: p.text }]}>
+          {exercise.name}
         </Text>
-        {note ? (
+        <Text style={[styles.exerciseMeta, { color: p.muted }]}>
+          {track === 'duration'
+            ? exercise.reps
+            : `${exercise.sets} sorozat · ${exercise.reps} ismétlés`}
+        </Text>
+        {exercise.note ? (
           <Text style={[styles.exerciseNote, { color: p.mutedSoft }]}>
-            {note}
+            {exercise.note}
           </Text>
         ) : null}
       </View>
 
       <View style={styles.inputs}>
-        <View style={styles.inputWrap}>
-          <Text style={[styles.inputLabel, { color: p.faint }]}>ism.</Text>
-          <TextInput
-            value={stored.reps}
-            onChangeText={(value) => update({ reps: value })}
-            editable={!locked}
-            keyboardType="number-pad"
-            placeholder="–"
-            placeholderTextColor={p.placeholder}
-            style={[
-              styles.input,
-              {
-                backgroundColor: p.fieldBg,
-                borderColor: p.fieldBorder,
-                color: p.text,
-                opacity: locked ? 0.6 : 1,
-              },
-            ]}
+        {track === 'duration' ? (
+          <ResultField
+            label="perc"
+            value={stored.minutes}
+            onChange={(minutes) => update({ minutes })}
+            locked={locked}
           />
-        </View>
-        <View style={styles.inputWrap}>
-          <Text style={[styles.inputLabel, { color: p.faint }]}>kg</Text>
-          <TextInput
-            value={stored.weightKg}
-            onChangeText={(value) => update({ weightKg: value })}
-            editable={!locked}
-            keyboardType="decimal-pad"
-            placeholder="–"
-            placeholderTextColor={p.placeholder}
-            style={[
-              styles.input,
-              {
-                backgroundColor: p.fieldBg,
-                borderColor: p.fieldBorder,
-                color: p.text,
-                opacity: locked ? 0.6 : 1,
-              },
-            ]}
-          />
-        </View>
+        ) : (
+          <>
+            <ResultField
+              label="ism."
+              value={stored.reps}
+              onChange={(reps) => update({ reps })}
+              locked={locked}
+            />
+            {track === 'reps-weight' ? (
+              <ResultField
+                label="kg"
+                value={stored.weightKg}
+                onChange={(weightKg) => update({ weightKg })}
+                locked={locked}
+                decimal
+              />
+            ) : null}
+          </>
+        )}
       </View>
     </View>
   );
@@ -181,11 +217,8 @@ function DayCard({ day }: { day: PlannedDay }) {
           {day.exercises.map((exercise) => (
             <ExerciseRow
               key={exercise.id}
-              exerciseId={exercise.id}
-              name={exercise.name}
-              sets={exercise.sets}
-              reps={exercise.reps}
-              note={exercise.note}
+              exercise={exercise}
+              kind={day.kind}
               locked={doneToday}
             />
           ))}

@@ -1,6 +1,7 @@
 import { GoogleGenAI, Type } from '@google/genai';
 
 import type {
+  ExerciseTracking,
   PlannedDay,
   PlannedExercise,
   WorkoutPlan,
@@ -9,6 +10,7 @@ import type {
 } from '@/types/workoutPlan';
 
 import { logApiFailure } from '@/utils/apiLogging';
+import { resolveTracking } from '@/utils/exerciseTracking';
 
 const MODEL = 'gemini-3.5-flash-lite';
 const MAX_PROMPT_LENGTH = 1_200;
@@ -41,6 +43,11 @@ A terv felépítése:
   rest napnak ne adj gyakorlatokat.
 - A gyakorlatoknál a sets és a reps legyen rövid szöveg, például "3" és
   "8-12". Ha valamit érzésre kell adagolni, írd oda úgy.
+- A track mező mondja meg, mit érdemes utólag feljegyezni a gyakorlatról:
+  "reps-weight" ha ismétlés és súly is értelmes (pl. guggolás súlyzóval),
+  "reps" ha csak az ismétlésszám (pl. saját testsúlyos vagy mobilizáló
+  gyakorlat), "duration" ha az időtartam a lényeg (pl. séta, kerékpár,
+  nyújtás). Séta mellé soha ne kérj súlyt.
 - A note mező rövid technikai fogódzó vagy könnyítés, legfeljebb egy mondat.
 - Magyarul írj, közvetlenül a felhasználónak.
 
@@ -91,6 +98,12 @@ function clampKind(value: unknown): PlannedDay['kind'] {
     : 'active-rest';
 }
 
+function clampTracking(value: unknown): ExerciseTracking | undefined {
+  return value === 'reps-weight' || value === 'reps' || value === 'duration'
+    ? value
+    : undefined;
+}
+
 function text(value: unknown, max: number) {
   return typeof value === 'string' ? value.trim().slice(0, max) : '';
 }
@@ -122,12 +135,17 @@ function normalisePlan(raw: unknown): WorkoutPlan | null {
                 const exercise = (item ?? {}) as Record<string, unknown>;
                 const name = text(exercise.name, 80);
                 if (!name) return null;
+                const reps = text(exercise.reps, 20) || '8-12';
                 return {
                   id: `${stamp}-${dayIndex}-${exerciseIndex}`,
                   name,
                   sets: text(exercise.sets, 20) || '3',
-                  reps: text(exercise.reps, 20) || '8-12',
+                  reps,
                   note: text(exercise.note, 160) || undefined,
+                  track: resolveTracking(
+                    { name, reps, track: clampTracking(exercise.track) },
+                    kind,
+                  ),
                 };
               })
               .filter((item): item is PlannedExercise => item !== null);
@@ -234,10 +252,14 @@ export async function POST(request: Request) {
                         sets: { type: Type.STRING },
                         reps: { type: Type.STRING },
                         note: { type: Type.STRING },
+                        track: {
+                          type: Type.STRING,
+                          enum: ['reps-weight', 'reps', 'duration'],
+                        },
                       },
                       // Without every field required the model drops the
                       // optional ones, exactly as it did for lab ranges.
-                      required: ['name', 'sets', 'reps', 'note'],
+                      required: ['name', 'sets', 'reps', 'note', 'track'],
                     },
                   },
                 },

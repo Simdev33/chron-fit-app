@@ -113,6 +113,8 @@ export type ExerciseResult = {
   name: string;
   reps: string;
   weightKg: string;
+  /** Only meaningful where the exercise is timed rather than counted. */
+  minutes: string;
 };
 
 /** A day the user marked as done, kept per date so the calendar can read it. */
@@ -145,8 +147,11 @@ type HealthLog = {
   labReports: LabReportEntry[];
   /** A legutóbb generált heti edzésterv, vagy null. */
   workoutPlan: WorkoutPlan | null;
-  /** Amit a felhasználó a tervhez beírt (ismétlés/súly), gyakorlatonként. */
-  exerciseLog: Record<string, { reps: string; weightKg: string }>;
+  /** Amit a felhasználó a tervhez beírt, gyakorlatonként. */
+  exerciseLog: Record<
+    string,
+    { reps: string; weightKg: string; minutes: string }
+  >;
   /** ISO dátum → aznap elvégzettnek jelölt edzések */
   completedWorkouts: Record<string, CompletedWorkout[]>;
 };
@@ -369,7 +374,7 @@ type HealthLogContextValue = {
   /** Egy gyakorlathoz beírt ismétlés/súly. Üres mezőt is meg kell őrizni. */
   setExerciseResult: (
     exerciseId: string,
-    value: { reps: string; weightKg: string },
+    value: { reps: string; weightKg: string; minutes: string },
   ) => void;
   /** A napot elvégzettnek jelöli a megadott dátumon. */
   completeWorkoutDay: (day: PlannedDay, dateIso: string) => void;
@@ -622,7 +627,10 @@ export function HealthLogProvider({
   }, []);
 
   const setExerciseResult = useCallback(
-    (exerciseId: string, value: { reps: string; weightKg: string }) => {
+    (
+      exerciseId: string,
+      value: { reps: string; weightKg: string; minutes: string },
+    ) => {
       setLog((prev) => ({
         ...prev,
         exerciseLog: { ...prev.exerciseLog, [exerciseId]: value },
@@ -650,6 +658,7 @@ export function HealthLogProvider({
             name: exercise.name,
             reps: prev.exerciseLog[exercise.id]?.reps ?? '',
             weightKg: prev.exerciseLog[exercise.id]?.weightKg ?? '',
+            minutes: prev.exerciseLog[exercise.id]?.minutes ?? '',
           })),
         };
 
