@@ -12,9 +12,12 @@ const REQUEST_TIMEOUT_MS = 45_000;
  */
 const MAX_EDGE_PX = 768;
 const JPEG_QUALITY = 0.6;
-/** Shown at 40pt in the meal list; this is generous even for a dense screen. */
-const THUMB_EDGE_PX = 128;
-const THUMB_QUALITY = 0.5;
+/**
+ * Shown at 40pt in the meal list. Smaller on web, where the picture is stored
+ * inside the log rather than as a file.
+ */
+const THUMB_EDGE_PX = Platform.OS === 'web' ? 96 : 128;
+const THUMB_QUALITY = Platform.OS === 'web' ? 0.4 : 0.5;
 
 function getAnalyzeEndpoint() {
   const configuredBaseUrl = process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, '');
