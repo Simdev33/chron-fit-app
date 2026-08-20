@@ -1,5 +1,6 @@
-import { Video, ResizeMode, type AVPlaybackStatus } from 'expo-av';
 import { Asset } from 'expo-asset';
+import { useEventListener } from 'expo';
+import { useVideoPlayer, VideoView } from 'expo-video';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { StatusBar } from 'expo-status-bar';
@@ -141,10 +142,15 @@ function WebIntroVideo({
 export function WelcomeSplash({ onDone }: Props) {
   const { height, width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  const videoRef = useRef<Video>(null);
   const webVideoRef = useRef<HTMLVideoElement | null>(null);
   const revealedRef = useRef(false);
   const fallbackRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const player = useVideoPlayer(INTRO_VIDEO, (instance) => {
+    instance.loop = false;
+    instance.muted = Platform.OS === 'web';
+    instance.play();
+  });
 
   const [name, setName] = useState('');
   const [sheetReady, setSheetReady] = useState(false);
@@ -155,7 +161,7 @@ export function WelcomeSplash({ onDone }: Props) {
   const logoScale = useSharedValue(0.9);
   const glowPulse = useSharedValue(0.35);
 
-  const freezeLastFrame = useCallback(async (status?: AVPlaybackStatus) => {
+  const freezeLastFrame = useCallback(() => {
     if (Platform.OS === 'web' && webVideoRef.current) {
       const el = webVideoRef.current;
       el.pause();
@@ -164,18 +170,17 @@ export function WelcomeSplash({ onDone }: Props) {
       }
       return;
     }
-    if (!status?.isLoaded) return;
-    const end = Math.max(0, (status.durationMillis ?? 0) - 60);
+    // Parking just short of the end keeps the closing frame on screen while
+    // the sheet slides up, instead of dropping to black.
     try {
-      await videoRef.current?.setStatusAsync({
-        shouldPlay: false,
-        isLooping: false,
-        positionMillis: end,
-      });
+      player.pause();
+      if (Number.isFinite(player.duration) && player.duration > 0) {
+        player.currentTime = Math.max(0, player.duration - 0.06);
+      }
     } catch {
-      // Last frame is already visible if pause is unsupported.
+      // Last frame is already visible if seeking is unsupported.
     }
-  }, []);
+  }, [player]);
 
   const reveal = useCallback(() => {
     if (revealedRef.current) return;
@@ -229,19 +234,16 @@ export function WelcomeSplash({ onDone }: Props) {
     });
   }, [glowPulse, logoOpacity, logoScale, sheetY]);
 
-  const onPlaybackStatusUpdate = useCallback(
-    (status: AVPlaybackStatus) => {
-      if (!status.isLoaded) {
-        if ('error' in status && status.error) reveal();
-        return;
-      }
-      if (status.didJustFinish && !status.isLooping) {
-        void freezeLastFrame(status);
-        reveal();
-      }
-    },
-    [freezeLastFrame, reveal],
-  );
+
+  useEventListener(player, 'playToEnd', () => {
+    freezeLastFrame();
+    reveal();
+  });
+
+  // A clip that cannot load must not leave the user staring at a black screen.
+  useEventListener(player, 'statusChange', ({ status }) => {
+    if (status === 'error') reveal();
+  });
 
   useEffect(() => {
     fallbackRef.current = setTimeout(reveal, 18000);
@@ -285,22 +287,11 @@ export function WelcomeSplash({ onDone }: Props) {
             onError={() => reveal()}
           />
         ) : (
-          <Video
-            ref={videoRef}
-            source={INTRO_VIDEO}
+          <VideoView
+            player={player}
             style={styles.videoFill}
-            videoStyle={styles.videoElement}
-            resizeMode={ResizeMode.COVER}
-            shouldPlay
-            isLooping={false}
-            isMuted={Platform.OS === 'web'}
-            useNativeControls={false}
-            progressUpdateIntervalMillis={250}
-            onPlaybackStatusUpdate={onPlaybackStatusUpdate}
-            onReadyForDisplay={() => {
-              void videoRef.current?.playAsync();
-            }}
-            onError={() => reveal()}
+            contentFit="cover"
+            nativeControls={false}
           />
         )}
       </View>

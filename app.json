@@ -43,7 +43,8 @@
           "photosPermission": "A CrohnSync a képeidhez kér hozzáférést, hogy kiválaszthasd az étkezésed fotóját.",
           "cameraPermission": "A CrohnSync a kamerához kér hozzáférést, hogy lefotózhasd az ételedet."
         }
-      ]
+      ],
+      "expo-video"
     ],
     "experiments": {
       "typedRoutes": true

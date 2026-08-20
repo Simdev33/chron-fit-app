@@ -1,5 +1,6 @@
-import { Video, ResizeMode } from 'expo-av';
 import { Asset } from 'expo-asset';
+import { useEventListener } from 'expo';
+import { useVideoPlayer, VideoView } from 'expo-video';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { usePathname, useRouter, useSegments } from 'expo-router';
@@ -227,20 +228,45 @@ function FloraVideo({
   }
 
   return (
-    <Video
-      source={source}
+    <NativeFloraVideo source={source} loop={loop} onEnded={onActionEnded} />
+  );
+}
+
+function NativeFloraVideo({
+  source,
+  loop,
+  onEnded,
+}: {
+  source: number;
+  loop: boolean;
+  onEnded: () => void;
+}) {
+  const player = useVideoPlayer(source, (instance) => {
+    instance.loop = loop;
+    instance.muted = true;
+    instance.play();
+  });
+
+  // The clip swaps as Flora changes look or switches idle/action, and the hook
+  // keeps the same player instance across those swaps.
+  useEffect(() => {
+    player.loop = loop;
+  }, [loop, player]);
+
+  useEventListener(player, 'playToEnd', () => {
+    if (!loop) onEnded();
+  });
+
+  useEventListener(player, 'statusChange', ({ status }) => {
+    if (status === 'error') onEnded();
+  });
+
+  return (
+    <VideoView
+      player={player}
       style={[StyleSheet.absoluteFill, styles.nativeVideo]}
-      resizeMode={ResizeMode.COVER}
-      shouldPlay
-      isLooping={loop}
-      isMuted
-      useNativeControls={false}
-      onPlaybackStatusUpdate={(status) => {
-        if (status.isLoaded && status.didJustFinish && !loop) {
-          onActionEnded();
-        }
-      }}
-      onError={onActionEnded}
+      contentFit="cover"
+      nativeControls={false}
     />
   );
 }
