@@ -79,6 +79,11 @@ function SaveButton({
           styles.saveBtn,
           {
             backgroundColor: p.dark ? 'rgba(255,255,255,0.1)' : '#F3E8FF',
+            // On Android an elevation shadow shows through a translucent
+            // surface as a dark block. A disabled button should not glow
+            // anyway, so drop the lift entirely here.
+            elevation: 0,
+            shadowOpacity: 0,
           },
         ]}>
         <Text
@@ -881,19 +886,30 @@ export function MealSheet({
     ]);
   };
 
-  const save = () => {
-    addMealForToday({ name: name.trim(), portion, mealType, calories });
+  const reset = () => {
     setName('');
     setPortion('medium');
     setMealType('lunch');
     setCustomKcal('');
     setPhotoUri(null);
     setPhotoError(null);
+  };
+
+  // Closing without saving used to leave the picked photo and its error behind,
+  // so reopening the sheet showed the last meal's picture.
+  const close = () => {
+    reset();
+    onClose();
+  };
+
+  const save = () => {
+    addMealForToday({ name: name.trim(), portion, mealType, calories });
+    reset();
     onClose();
   };
 
   return (
-    <BottomSheet visible={visible} onClose={onClose} title="Étkezés rögzítése">
+    <BottomSheet visible={visible} onClose={close} title="Étkezés rögzítése">
       <ScrollView
         contentContainerStyle={styles.sheetBody}
         keyboardShouldPersistTaps="handled">
