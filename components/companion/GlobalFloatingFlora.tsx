@@ -110,6 +110,8 @@ const BUBBLE_SCREEN_MARGIN = 12;
 const BUBBLE_TAIL_INSET = 18;
 const TUTORIAL_BUBBLE_MAX_W = 280;
 const CLOSE_TARGET_SIZE = 76;
+/** Length of the exit that plays when she is dropped on the X. */
+const EXIT_MS = 260;
 const CLOSE_SNAP_DISTANCE = 88;
 // Mirrors the floating tab bar in app/(tabs)/_layout.tsx: its wrap sits at
 // bottom 0 with paddingBottom max(insets.bottom, 12) + 4, and the bar itself
@@ -705,9 +707,11 @@ export function GlobalFloatingFlora() {
     transformOrigin: 'bottom right',
   }));
   const dragStyle = useAnimatedStyle(() => ({
+    opacity: exitOpacity.value,
     transform: [
       { translateX: dragX.value },
       { translateY: dragY.value },
+      { scale: exitScale.value },
     ],
   }));
 
@@ -723,6 +727,12 @@ export function GlobalFloatingFlora() {
     setEdge(next);
   }, []);
 
+  // She used to blink out the instant she was dropped on the X. These drive a
+  // short exit instead: she is pulled into the button while shrinking away.
+  const exitScale = useSharedValue(1);
+  const exitOpacity = useSharedValue(1);
+  const dismissing = useSharedValue(0);
+
   const hideFlora = useCallback(() => {
     updateProfile({ floraHidden: true });
     showFloraHint();
@@ -735,8 +745,18 @@ export function GlobalFloatingFlora() {
     if (!profile.floraHidden) return;
     dragX.value = initialX;
     dragY.value = initialY;
+    exitScale.value = 1;
+    exitOpacity.value = 1;
     setEdge('right');
-  }, [dragX, dragY, initialX, initialY, profile.floraHidden]);
+  }, [
+    dragX,
+    dragY,
+    exitOpacity,
+    exitScale,
+    initialX,
+    initialY,
+    profile.floraHidden,
+  ]);
 
   // The dock rises from the bottom edge, clear of the floating tab bar.
   const closeDockBottom =
@@ -823,7 +843,19 @@ export function GlobalFloatingFlora() {
         // Resetting her position here made her jump back to the edge for a
         // frame before vanishing. The reset now happens once she is hidden,
         // where nobody can see it.
-        runOnJS(hideFlora)();
+        dismissing.value = 1;
+        const settle = { duration: EXIT_MS };
+        dragX.value = withTiming(closeTargetX.value - FAB_W / 2, settle);
+        dragY.value = withTiming(closeTargetY.value - FAB_H / 2, settle);
+        exitScale.value = withTiming(0.18, settle);
+        exitOpacity.value = withTiming(0, settle, (finished) => {
+          // Hiding her only once the exit has played keeps the component
+          // mounted for its own animation.
+          if (finished) runOnJS(hideFlora)();
+          // The dock waited for her; it can go now.
+          dismissing.value = 0;
+          closeReveal.value = withTiming(0, { duration: 180 });
+        });
         return;
       }
 
@@ -839,6 +871,9 @@ export function GlobalFloatingFlora() {
       runOnJS(setSnappedEdge)(snapLeft ? 'left' : 'right');
     })
     .onFinalize(() => {
+      // While she is being absorbed the dock has to stay put, otherwise she
+      // flies into an X that is no longer there.
+      if (dismissing.value) return;
       closeReveal.value = withTiming(0, { duration: 180 });
     });
 
