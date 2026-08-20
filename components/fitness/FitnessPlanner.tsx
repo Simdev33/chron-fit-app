@@ -296,8 +296,13 @@ export function FitnessPlanner() {
             ]}
           />
 
-          {!plan && !planning ? (
+          {!planning && prompt.trim().length === 0 ? (
             <View style={{ gap: 6 }}>
+              <Text style={[styles.exampleHint, { color: p.faint }]}>
+                {plan
+                  ? 'Írj újat, vagy koppints egy ötletre — az új terv felváltja a mostanit.'
+                  : 'Vagy koppints egy ötletre:'}
+              </Text>
               {EXAMPLES.map((example) => (
                 <Pressable
                   key={example}
@@ -405,6 +410,11 @@ const styles = StyleSheet.create({
     fontFamily: font.body,
     fontSize: 12,
     lineHeight: 17,
+  },
+  exampleHint: {
+    fontFamily: font.body,
+    fontSize: 11,
+    marginBottom: 2,
   },
   error: {
     fontFamily: font.body,

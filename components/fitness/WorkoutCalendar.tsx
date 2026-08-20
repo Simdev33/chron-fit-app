@@ -66,9 +66,11 @@ export function WorkoutCalendar() {
     return Array.from({ length: total }, (_, index) => {
       const dayNumber = index - lead + 1;
       if (dayNumber < 1 || dayNumber > daysInMonth) return null;
+      const date = new Date(year, month, dayNumber);
       return {
         dayNumber,
-        iso: toIsoDate(new Date(year, month, dayNumber)),
+        date,
+        iso: toIsoDate(date),
       };
     });
   }, [cursor]);
@@ -81,9 +83,34 @@ export function WorkoutCalendar() {
     );
   };
 
+  // The plan is a weekly routine with no dates of its own, so it is laid over
+  // the calendar from today onwards. Showing it on past days would claim
+  // something happened that never did.
+  const startOfToday = new Date(
+    today.getFullYear(),
+    today.getMonth(),
+    today.getDate(),
+  ).getTime();
+
+  const plannedFor = (date: Date) => {
+    const plan = log.workoutPlan;
+    if (!plan || date.getTime() < startOfToday) return null;
+    const day = plan.days.find(
+      (entry) => entry.weekday === mondayIndex(date),
+    );
+    return day && day.kind !== 'rest' ? day : null;
+  };
+
   const selectedEntries = selected
     ? (log.completedWorkouts[selected] ?? [])
     : [];
+  const selectedPlan = selected
+    ? (log.workoutPlan?.days.find(
+        (entry) =>
+          entry.weekday ===
+          mondayIndex(new Date(`${selected}T00:00:00`)),
+      ) ?? null)
+    : null;
 
   return (
     <GlassCard style={{ padding: 16 }}>
@@ -132,6 +159,8 @@ export function WorkoutCalendar() {
           if (!cell) return <View key={`blank-${index}`} style={styles.cell} />;
 
           const entries = log.completedWorkouts[cell.iso] ?? [];
+          const planned = plannedFor(cell.date);
+          const hasMark = entries.length > 0 || planned !== null;
           const isToday = cell.iso === todayIso;
           const isSelected = cell.iso === selected;
 
@@ -139,10 +168,14 @@ export function WorkoutCalendar() {
             <Pressable
               key={cell.iso}
               onPress={() => setSelected(isSelected ? null : cell.iso)}
-              disabled={entries.length === 0}
+              disabled={!hasMark}
               accessibilityRole="button"
               accessibilityLabel={`${cell.dayNumber}. ${
-                entries.length ? 'volt edzés' : 'nem volt edzés'
+                entries.length
+                  ? 'volt edzés'
+                  : planned
+                    ? `tervezve: ${planned.title}`
+                    : 'nincs edzés'
               }`}
               style={styles.cell}>
               <View
@@ -155,7 +188,7 @@ export function WorkoutCalendar() {
                   style={[
                     styles.dayNumber,
                     {
-                      color: entries.length
+                      color: hasMark
                         ? p.text
                         : isToday
                           ? violet[400]
@@ -167,15 +200,26 @@ export function WorkoutCalendar() {
                 </Text>
 
                 <View style={styles.dots}>
-                  {entries.slice(0, 3).map((entry) => (
+                  {entries.length ? (
+                    entries.slice(0, 3).map((entry) => (
+                      <View
+                        key={entry.id}
+                        style={[
+                          styles.dot,
+                          { backgroundColor: KIND_COLOR[entry.kind] },
+                        ]}
+                      />
+                    ))
+                  ) : planned ? (
+                    // Hollow, so a plan never looks like something already done.
                     <View
-                      key={entry.id}
                       style={[
                         styles.dot,
-                        { backgroundColor: KIND_COLOR[entry.kind] },
+                        styles.dotPlanned,
+                        { borderColor: KIND_COLOR[planned.kind] },
                       ]}
                     />
-                  ))}
+                  ) : null}
                 </View>
               </View>
             </Pressable>
@@ -183,8 +227,30 @@ export function WorkoutCalendar() {
         })}
       </View>
 
-      {selected && selectedEntries.length ? (
+      {selected && (selectedEntries.length || selectedPlan) ? (
         <View style={[styles.detail, { borderTopColor: p.divider }]}>
+          {!selectedEntries.length && selectedPlan ? (
+            <View style={styles.detailRow}>
+              <View
+                style={[
+                  styles.dot,
+                  styles.dotPlanned,
+                  { borderColor: KIND_COLOR[selectedPlan.kind], marginTop: 6 },
+                ]}
+              />
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.detailTitle, { color: p.text }]}>
+                  {selectedPlan.title}
+                </Text>
+                <Text style={[styles.detailMeta, { color: p.muted }]}>
+                  Tervezve · {KIND_LABEL[selectedPlan.kind]}
+                  {selectedPlan.durationMin
+                    ? ` · ${selectedPlan.durationMin} perc`
+                    : ''}
+                </Text>
+              </View>
+            </View>
+          ) : null}
           {selectedEntries.map((entry) => (
             <View key={entry.id} style={styles.detailRow}>
               <View
@@ -270,6 +336,13 @@ const styles = StyleSheet.create({
     width: 4,
     height: 4,
     borderRadius: 2,
+  },
+  dotPlanned: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    borderWidth: 1,
+    backgroundColor: 'transparent',
   },
   detail: {
     marginTop: 14,
