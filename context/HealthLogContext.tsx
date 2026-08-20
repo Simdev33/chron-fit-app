@@ -1,3 +1,8 @@
+import type {
+  PlannedDay,
+  WorkoutDayKind,
+  WorkoutPlan,
+} from '@/types/workoutPlan';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, {
   createContext,
@@ -102,6 +107,25 @@ export type MedicationEntry = {
   nextDoseDate?: string;
 };
 
+/** A logged set for one exercise, as the user typed it. */
+export type ExerciseResult = {
+  exerciseId: string;
+  name: string;
+  reps: string;
+  weightKg: string;
+};
+
+/** A day the user marked as done, kept per date so the calendar can read it. */
+export type CompletedWorkout = {
+  id: string;
+  /** Which planned day this came from, when it came from the plan at all. */
+  planDayId?: string;
+  title: string;
+  kind: WorkoutDayKind;
+  durationMin?: number;
+  results: ExerciseResult[];
+};
+
 type HealthLog = {
   /** ISO dátum (YYYY-MM-DD) → hangulat 1-5 */
   moods: Record<string, number>;
@@ -119,6 +143,12 @@ type HealthLog = {
   takenDoses: Record<string, string[]>;
   /** Beolvasott laborleletek, legfrissebb elöl. */
   labReports: LabReportEntry[];
+  /** A legutóbb generált heti edzésterv, vagy null. */
+  workoutPlan: WorkoutPlan | null;
+  /** Amit a felhasználó a tervhez beírt (ismétlés/súly), gyakorlatonként. */
+  exerciseLog: Record<string, { reps: string; weightKg: string }>;
+  /** ISO dátum → aznap elvégzettnek jelölt edzések */
+  completedWorkouts: Record<string, CompletedWorkout[]>;
 };
 
 const STORAGE_KEY = 'crohnsync-healthlog-v1';
@@ -269,6 +299,9 @@ const emptyLog: HealthLog = {
   noMeds: false,
   takenDoses: {},
   labReports: [],
+  workoutPlan: null,
+  exerciseLog: {},
+  completedWorkouts: {},
 };
 
 /**
@@ -331,6 +364,17 @@ type HealthLogContextValue = {
   setNoMeds: (value: boolean) => void;
   /** Onboarding után: üres gyógyszerlista + a noMeds jelző beállítása. */
   resetMedications: (noMeds: boolean) => void;
+  /** A frissen generált terv felváltja a korábbit; null törli. */
+  saveWorkoutPlan: (plan: WorkoutPlan | null) => void;
+  /** Egy gyakorlathoz beírt ismétlés/súly. Üres mezőt is meg kell őrizni. */
+  setExerciseResult: (
+    exerciseId: string,
+    value: { reps: string; weightKg: string },
+  ) => void;
+  /** A napot elvégzettnek jelöli a megadott dátumon. */
+  completeWorkoutDay: (day: PlannedDay, dateIso: string) => void;
+  /** Visszavonja a jelölést. */
+  uncompleteWorkoutDay: (planDayId: string, dateIso: string) => void;
 };
 
 const HealthLogContext = createContext<HealthLogContextValue | null>(null);
@@ -360,6 +404,10 @@ export function HealthLogProvider({
             takenDoses: parsed.takenDoses ?? {},
             // Absent for anyone whose log predates lab imports.
             labReports: parsed.labReports ?? [],
+            // Likewise for anyone whose log predates the fitness planner.
+            workoutPlan: parsed.workoutPlan ?? null,
+            exerciseLog: parsed.exerciseLog ?? {},
+            completedWorkouts: parsed.completedWorkouts ?? {},
           });
         }
       } catch {
@@ -550,6 +598,89 @@ export function HealthLogProvider({
     [update],
   );
 
+  /*
+   * Where the database would come in.
+   *
+   * These four actions are the only writers of workout state, so they are the
+   * seam for a server. Today everything lands in AsyncStorage through setLog,
+   * which is what the whole log already does -- and deliberately so: this data
+   * sits next to symptoms and medication, and the app has no real accounts yet
+   * (profile.loggedIn is a local boolean), so nothing here should leave the
+   * device until there is an authenticated user to attach it to.
+   *
+   * With auth in place, each of these would additionally upsert to Supabase --
+   * workout_plans (one row per plan), exercise_log (exercise_id, reps, weight)
+   * and completed_workouts (user_id, date, plan_day_id, results) -- writing
+   * local state first so the UI stays instant, then syncing. Row level security
+   * has to scope every table to auth.uid(); the anon key the app ships with is
+   * public, and flora_knowledge is readable with it.
+   */
+  const saveWorkoutPlan = useCallback((plan: WorkoutPlan | null) => {
+    // A new plan invalidates what was typed against the old exercises, since
+    // the ids no longer refer to anything.
+    setLog((prev) => ({ ...prev, workoutPlan: plan, exerciseLog: {} }));
+  }, []);
+
+  const setExerciseResult = useCallback(
+    (exerciseId: string, value: { reps: string; weightKg: string }) => {
+      setLog((prev) => ({
+        ...prev,
+        exerciseLog: { ...prev.exerciseLog, [exerciseId]: value },
+      }));
+    },
+    [],
+  );
+
+  const completeWorkoutDay = useCallback(
+    (day: PlannedDay, dateIso: string) => {
+      setLog((prev) => {
+        const already = prev.completedWorkouts[dateIso] ?? [];
+        if (already.some((entry) => entry.planDayId === day.id)) return prev;
+
+        // Whatever was typed is copied in, so editing the plan later cannot
+        // rewrite what the user recorded as done.
+        const entry: CompletedWorkout = {
+          id: `${day.id}-${dateIso}`,
+          planDayId: day.id,
+          title: day.title,
+          kind: day.kind,
+          durationMin: day.durationMin,
+          results: day.exercises.map((exercise) => ({
+            exerciseId: exercise.id,
+            name: exercise.name,
+            reps: prev.exerciseLog[exercise.id]?.reps ?? '',
+            weightKg: prev.exerciseLog[exercise.id]?.weightKg ?? '',
+          })),
+        };
+
+        return {
+          ...prev,
+          completedWorkouts: {
+            ...prev.completedWorkouts,
+            [dateIso]: [...already, entry],
+          },
+        };
+      });
+    },
+    [],
+  );
+
+  const uncompleteWorkoutDay = useCallback(
+    (planDayId: string, dateIso: string) => {
+      setLog((prev) => {
+        const already = prev.completedWorkouts[dateIso] ?? [];
+        const next = already.filter((entry) => entry.planDayId !== planDayId);
+        if (next.length === already.length) return prev;
+
+        const map = { ...prev.completedWorkouts };
+        if (next.length) map[dateIso] = next;
+        else delete map[dateIso];
+        return { ...prev, completedWorkouts: map };
+      });
+    },
+    [],
+  );
+
   const removeAppointment = useCallback(
     (id: string) => {
       update((prev) => ({
@@ -684,6 +815,10 @@ export function HealthLogProvider({
       takeMedicationDose,
       setNoMeds,
       resetMedications,
+      saveWorkoutPlan,
+      setExerciseResult,
+      completeWorkoutDay,
+      uncompleteWorkoutDay,
     }),
     [
       ready,
@@ -703,6 +838,10 @@ export function HealthLogProvider({
       takeMedicationDose,
       setNoMeds,
       resetMedications,
+      saveWorkoutPlan,
+      setExerciseResult,
+      completeWorkoutDay,
+      uncompleteWorkoutDay,
     ],
   );
 

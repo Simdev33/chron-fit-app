@@ -12,6 +12,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BackgroundWrapper } from '@/components/BackgroundWrapper';
 import { MealSheet, WorkoutSheet } from '@/components/figma/sheets';
+import { FitnessPlanner } from '@/components/fitness/FitnessPlanner';
 import { EmptyState, GlassCard, usePalette } from '@/components/figma/ui';
 import { font, violet } from '@/constants/figma';
 import { RECIPES } from '@/constants/figmaData';
@@ -77,6 +78,7 @@ export default function LifestyleScreen() {
     <BackgroundWrapper variant="lifestyle">
       <ScrollView
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
         contentContainerStyle={{
           paddingTop: insets.top + 16,
           paddingBottom: tabBarSpacing,
@@ -421,181 +423,7 @@ export default function LifestyleScreen() {
             </View>
           </View>
         ) : (
-          <View style={{ paddingHorizontal: 20, gap: 20 }}>
-            {/* Mai ajánlás */}
-            <LinearGradient
-              colors={['rgba(99,102,241,0.5)', 'rgba(124,58,237,0.35)']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={{
-                borderRadius: 24,
-                padding: 20,
-                borderWidth: 1,
-                borderColor: 'rgba(167,139,250,0.2)',
-              }}>
-              <Text style={styles.recoEyebrow}>Mai ajánlás</Text>
-              <Text
-                style={{
-                  fontFamily: font.displayX,
-                  fontSize: 20,
-                  color: '#fff',
-                  marginBottom: 2,
-                }}>
-                Könnyű reggeli séta
-              </Text>
-              <Text
-                style={{
-                  fontSize: 14,
-                  fontFamily: font.body,
-                  color: 'rgba(255,255,255,0.6)',
-                }}>
-                20 perc · Alacsony terhelés · 95 kcal
-              </Text>
-              <View style={{ flexDirection: 'row', gap: 8, marginTop: 16 }}>
-                <Pressable
-                  onPress={() => setWorkoutOpen(true)}
-                  style={({ pressed }) => [
-                    styles.recoBtn,
-                    { backgroundColor: '#fff' },
-                    pressed && { transform: [{ scale: 0.95 }] },
-                  ]}>
-                  <Text
-                    style={{
-                      fontSize: 14,
-                      fontFamily: font.display,
-                      color: violet[700],
-                    }}>
-                    Edzés indítása
-                  </Text>
-                </Pressable>
-                <Pressable
-                  onPress={() => setWorkoutOpen(true)}
-                  style={({ pressed }) => [
-                    styles.recoBtn,
-                    {
-                      backgroundColor: p.dark
-                        ? 'rgba(255,255,255,0.1)'
-                        : 'rgba(168,85,247,0.2)',
-                    },
-                    pressed && { transform: [{ scale: 0.95 }] },
-                  ]}>
-                  <Text
-                    style={{
-                      fontSize: 14,
-                      fontFamily: font.display,
-                      color: p.dark ? 'rgba(255,255,255,0.7)' : '#E9D5FF',
-                    }}>
-                    Könnyebb opció
-                  </Text>
-                </Pressable>
-              </View>
-            </LinearGradient>
-
-            {/* Heti haladás */}
-            <GlassCard style={{ padding: 20 }}>
-              <Text style={[styles.cardLabel, { color: p.muted }]}>
-                Heti haladás
-              </Text>
-              <View style={{ gap: 12 }}>
-                {WEEKLY.map((w) => (
-                  <View key={w.label}>
-                    <View style={styles.rowBetween}>
-                      <Text
-                        style={{
-                          fontSize: 14,
-                          fontFamily: font.bodyMedium,
-                          color: p.text,
-                        }}>
-                        {w.label}
-                      </Text>
-                      <Text
-                        style={{
-                          fontSize: 14,
-                          fontFamily: font.body,
-                          color: p.muted,
-                        }}>
-                        {w.cur.toLocaleString('hu-HU')} /{' '}
-                        {w.goal.toLocaleString('hu-HU')} {w.unit}
-                      </Text>
-                    </View>
-                    <View
-                      style={[
-                        styles.progressTrack,
-                        {
-                          backgroundColor: p.dark
-                            ? 'rgba(255,255,255,0.1)'
-                            : '#F3E8FF',
-                        },
-                      ]}>
-                      <LinearGradient
-                        colors={[violet[500], violet[400]]}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 0 }}
-                        style={{
-                          height: '100%',
-                          borderRadius: 999,
-                          width: `${Math.min((w.cur / w.goal) * 100, 100)}%`,
-                        }}
-                      />
-                    </View>
-                  </View>
-                ))}
-              </View>
-            </GlassCard>
-
-            {/* Ajánlott edzések */}
-            <View style={{ gap: 12 }}>
-              {WORKOUTS.map((w) => (
-                <GlassCard
-                  key={w.name}
-                  style={{ padding: 16 }}
-                  onPress={() => setWorkoutOpen(true)}>
-                  <View
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      gap: 12,
-                    }}>
-                    <Text style={{ fontSize: 24 }}>{w.icon}</Text>
-                    <View style={{ flex: 1 }}>
-                      <Text
-                        style={{
-                          fontFamily: font.display,
-                          fontSize: 14,
-                          color: p.text,
-                        }}>
-                        {w.name}
-                      </Text>
-                      <Text
-                        style={{
-                          fontSize: 12,
-                          fontFamily: font.body,
-                          color: p.muted,
-                        }}>
-                        {w.dur} · {w.cal} kcal
-                      </Text>
-                    </View>
-                    <View
-                      style={{
-                        paddingHorizontal: 8,
-                        paddingVertical: 4,
-                        borderRadius: 999,
-                        backgroundColor: 'rgba(139,92,246,0.2)',
-                      }}>
-                      <Text
-                        style={{
-                          fontSize: 10,
-                          fontFamily: font.bodySemi,
-                          color: p.dark ? violet[300] : violet[600],
-                        }}>
-                        {w.tag}
-                      </Text>
-                    </View>
-                  </View>
-                </GlassCard>
-              ))}
-            </View>
-          </View>
+          <FitnessPlanner />
         )}
       </ScrollView>
 
