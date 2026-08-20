@@ -1,3 +1,4 @@
+import { deleteMealThumbnail } from '@/utils/mealThumbnails';
 import type {
   PlannedDay,
   WorkoutDayKind,
@@ -55,6 +56,8 @@ export type MealEntry = MealMacros & {
   calories: number;
   impact?: FoodImpact;
   tagged?: boolean;
+  /** Local file uri of the photo thumbnail, when one was kept. */
+  thumbUri?: string;
 };
 
 /** How a measured value sits against the range the lab printed. */
@@ -591,13 +594,19 @@ export function HealthLogProvider({
 
   const removeMeal = useCallback(
     (date: string, id: string) => {
-      update((prev) => ({
-        ...prev,
-        meals: {
-          ...prev.meals,
-          [date]: (prev.meals[date] ?? []).filter((m) => m.id !== id),
-        },
-      }));
+      update((prev) => {
+        const forDate = prev.meals[date] ?? [];
+        // The thumbnail is a file, so dropping the entry alone would leave it
+        // on disk with nothing pointing at it.
+        deleteMealThumbnail(forDate.find((m) => m.id === id)?.thumbUri);
+        return {
+          ...prev,
+          meals: {
+            ...prev.meals,
+            [date]: forDate.filter((m) => m.id !== id),
+          },
+        };
+      });
     },
     [update],
   );

@@ -12,6 +12,9 @@ const REQUEST_TIMEOUT_MS = 45_000;
  */
 const MAX_EDGE_PX = 768;
 const JPEG_QUALITY = 0.6;
+/** Shown at 40pt in the meal list; this is generous even for a dense screen. */
+const THUMB_EDGE_PX = 128;
+const THUMB_QUALITY = 0.5;
 
 function getAnalyzeEndpoint() {
   const configuredBaseUrl = process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, '');
@@ -29,7 +32,12 @@ function getAnalyzeEndpoint() {
   );
 }
 
-export type PickedPhoto = { uri: string; base64: string };
+export type PickedPhoto = {
+  uri: string;
+  base64: string;
+  /** A small square copy, kept as the meal's icon. */
+  thumbBase64: string | null;
+};
 
 /** Returns null when the user backs out or denies permission. */
 export async function pickMealPhoto(
@@ -70,7 +78,28 @@ export async function pickMealPhoto(
   });
 
   if (!saved.base64) return null;
-  return { uri: saved.uri, base64: saved.base64 };
+
+  // Rendered from the original rather than from the analysis copy, so the
+  // icon is not a rescale of an already lossy image.
+  let thumbBase64: string | null = null;
+  try {
+    const thumbContext = ImageManipulator.manipulate(asset.uri);
+    const portrait = (asset.height || 0) >= (asset.width || 0);
+    thumbContext.resize(
+      portrait ? { height: THUMB_EDGE_PX } : { width: THUMB_EDGE_PX },
+    );
+    const thumb = await (await thumbContext.renderAsync()).saveAsync({
+      format: SaveFormat.JPEG,
+      compress: THUMB_QUALITY,
+      base64: true,
+    });
+    thumbBase64 = thumb.base64 ?? null;
+  } catch {
+    // The meal saves without an icon rather than failing outright.
+    thumbBase64 = null;
+  }
+
+  return { uri: saved.uri, base64: saved.base64, thumbBase64 };
 }
 
 export async function analyzeMealPhoto(

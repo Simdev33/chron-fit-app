@@ -36,6 +36,7 @@ import {
   analyzeMealPhoto,
   pickMealPhoto,
 } from '@/utils/analyzeMealPhoto';
+import { saveMealThumbnail } from '@/utils/mealThumbnails';
 
 import {
   BottomSheet,
@@ -856,6 +857,7 @@ export function MealSheet({
     fiberG: '',
   });
   const [photoUri, setPhotoUri] = useState<string | null>(null);
+  const [thumbBase64, setThumbBase64] = useState<string | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [photoError, setPhotoError] = useState<string | null>(null);
   const portions = [
@@ -882,6 +884,7 @@ export function MealSheet({
       if (!picked) return;
 
       setPhotoUri(picked.uri);
+      setThumbBase64(picked.thumbBase64);
       setAnalyzing(true);
       const result = await analyzeMealPhoto(picked.base64);
 
@@ -928,6 +931,7 @@ export function MealSheet({
     setCustomKcal('');
     setMacros({ carbsG: '', proteinG: '', fatG: '', fiberG: '' });
     setPhotoUri(null);
+    setThumbBase64(null);
     setPhotoError(null);
   };
 
@@ -939,6 +943,10 @@ export function MealSheet({
   };
 
   const save = () => {
+    // Written only on save, so a picked-then-abandoned photo leaves nothing
+    // behind on disk.
+    const thumbUri = thumbBase64 ? saveMealThumbnail(thumbBase64) : null;
+
     addMeal(
       {
         name: name.trim(),
@@ -946,6 +954,7 @@ export function MealSheet({
         mealType,
         calories,
         ...parseMacros(macros),
+        ...(thumbUri ? { thumbUri } : null),
       },
       dateIso,
     );

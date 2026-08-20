@@ -11,6 +11,8 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BackgroundWrapper } from '@/components/BackgroundWrapper';
+import { Image } from 'expo-image';
+
 import { DayStrip } from '@/components/figma/DayStrip';
 import { CalorieRing } from '@/components/nutrition/CalorieRing';
 import { MealSheet, WorkoutSheet } from '@/components/figma/sheets';
@@ -244,18 +246,21 @@ export default function LifestyleScreen() {
                           alignItems: 'center',
                           gap: 12,
                         }}>
-                        <View
-                          style={{
-                            width: 40,
-                            height: 40,
-                            borderRadius: 12,
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            backgroundColor: 'rgba(139,92,246,0.2)',
-                          }}>
-                          <Text style={{ fontSize: 18 }}>
-                            {mealTypeEmoji[m.mealType]}
-                          </Text>
+                        <View style={styles.mealThumb}>
+                          {m.thumbUri ? (
+                            <Image
+                              source={{ uri: m.thumbUri }}
+                              style={StyleSheet.absoluteFill}
+                              contentFit="cover"
+                              // The file can go missing if storage is cleared
+                              // from outside the app; the emoji stays behind it.
+                              transition={120}
+                            />
+                          ) : (
+                            <Text style={{ fontSize: 18 }}>
+                              {mealTypeEmoji[m.mealType]}
+                            </Text>
+                          )}
                         </View>
                         <View style={{ flex: 1 }}>
                           <Text
@@ -520,6 +525,15 @@ export default function LifestyleScreen() {
 }
 
 const styles = StyleSheet.create({
+  mealThumb: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(139,92,246,0.2)',
+    overflow: 'hidden',
+  },
   estimateNote: {
     fontFamily: font.body,
     fontSize: 11,

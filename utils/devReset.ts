@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DevSettings, Platform } from 'react-native';
 
 import { clearDocuments } from '@/utils/documentStore';
+import { clearMealThumbnails } from '@/utils/mealThumbnails';
 
 /**
  * Everything the app persists between launches. Listed here rather than
@@ -21,6 +22,7 @@ const PERSISTED_KEYS = [
 export async function resetApp() {
   await AsyncStorage.multiRemove(PERSISTED_KEYS);
   clearDocuments();
+  clearMealThumbnails();
 
   if (Platform.OS === 'web') {
     window.location.reload();
