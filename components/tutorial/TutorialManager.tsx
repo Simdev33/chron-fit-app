@@ -31,6 +31,8 @@ const HOLE_RADIUS = 20;
 const MEASURE_ATTEMPTS = 12;
 const MEASURE_RETRY_MS = 150;
 const POST_NAV_DELAY_MS = 180;
+/** Vertical room the step counter and the buttons take up. */
+const CONTROLS_STRIP_H = 64;
 
 export function TutorialManager() {
   const pathname = usePathname();
@@ -157,6 +159,15 @@ export function TutorialManager() {
   const advanceLabel =
     currentStep.action === 'finish' ? 'Kezdjük!' : 'Következő';
 
+  // The controls live at the top, but the first step highlights the header and
+  // the buttons ended up sitting inside that frame. Rather than special-casing
+  // step one, they move to the bottom whenever the spotlight reaches into the
+  // strip they occupy.
+  const controlsAtBottom = !!hole && hole.y < insets.top + CONTROLS_STRIP_H;
+  const controlsPosition = controlsAtBottom
+    ? { bottom: Math.max(insets.bottom, 12) + 16 }
+    : { top: insets.top + 12 };
+
   return (
     <View
       ref={rootRef}
@@ -232,7 +243,7 @@ export function TutorialManager() {
       />
 
       <View
-        style={[styles.controls, { top: insets.top + 12 }]}
+        style={[styles.controls, controlsPosition]}
         pointerEvents="box-none">
         <View style={styles.progressPill}>
           <Text style={styles.progressText}>

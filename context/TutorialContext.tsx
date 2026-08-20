@@ -1,3 +1,4 @@
+import { router } from 'expo-router';
 import React, {
   createContext,
   useCallback,
@@ -122,6 +123,10 @@ export function TutorialProvider({ children }: { children: React.ReactNode }) {
     setTargetRect(null);
     setTransitioning(false);
     updateProfile({ tutorialDone: true });
+    // The walkthrough leaves the user wherever its last step went -- the
+    // Health tab at the end, or whichever tab they skipped from. Neither is
+    // somewhere they chose to be, so it hands them back to the home screen.
+    router.navigate('/');
   }, [updateProfile]);
 
   // Replaying the tutorial cannot go through profile.tutorialDone alone,
