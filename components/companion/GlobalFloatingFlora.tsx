@@ -294,6 +294,11 @@ function NativeFloraVideo({
       style={[StyleSheet.absoluteFill, styles.nativeVideo]}
       contentFit="cover"
       nativeControls={false}
+      // Without this the shutter blanks the circle to black between clips.
+      useExoShutter={false}
+      // A SurfaceView draws in its own layer, so it lags behind the orb while
+      // she is dragged and does not follow the rounded clip.
+      surfaceType="textureView"
     />
   );
 }

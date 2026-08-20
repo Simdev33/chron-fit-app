@@ -320,14 +320,13 @@ export function WelcomeSplash({ onDone }: Props) {
 
       <KeyboardAvoidingView
         pointerEvents={sheetReady ? 'auto' : 'none'}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior="padding"
         style={styles.sheetDock}>
         <Animated.View style={[{ height: sheetHeight }, sheetStyle]}>
           <View style={styles.sheetClip}>
             <BlurView
               intensity={42}
               tint="dark"
-              blurMethod="dimezisBlurView"
               style={StyleSheet.absoluteFill}
             />
             <View style={styles.glassFill} />
