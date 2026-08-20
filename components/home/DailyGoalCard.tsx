@@ -139,7 +139,11 @@ export function DailyGoalCard({
         key="meals"
         icon={<UtensilsCrossed size={iconSize} color={violet[400]} />}
         label="Étkezés"
-        value={`${Math.round((current / goal) * 100)}%`}
+        // Reads the same way as the active calorie row, and the actual
+        // numbers say more here than a percentage does.
+        value={`${current.toLocaleString('hu-HU')} / ${goal.toLocaleString(
+          'hu-HU',
+        )} kcal`}
         ratio={goal > 0 ? current / goal : 0}
         onPress={onOpen ? () => onOpen('meals') : undefined}
       />,
