@@ -46,6 +46,8 @@ export type SupplementEntry = {
 export type Profile = {
   onboarded: boolean;
   loggedIn: boolean;
+  /** Opaque session token from the server. Empty when signed out. */
+  sessionToken: string;
   /** Az első bejelentkezés utáni bemutató (tutorial) lefutott-e már. */
   tutorialDone: boolean;
   /** A lebegő Flóra el van-e rejtve a képernyőről. */
@@ -104,6 +106,7 @@ const STORAGE_KEY = 'crohnsync-profile-v1';
 const defaultProfile: Profile = {
   onboarded: false,
   loggedIn: false,
+  sessionToken: '',
   tutorialDone: false,
   floraHidden: false,
   email: '',
@@ -151,9 +154,10 @@ type ProfileContextValue = {
   profile: Profile;
   updateProfile: (patch: Partial<Profile>) => void;
   /** Kamu bejelentkezés: meglévő fióknak tekintjük, onboarding kihagyva. */
-  signIn: (email: string) => void;
+  signIn: (email: string, token: string) => void;
   /** Kamu regisztráció: új fiók, utána jön az adatbekérő onboarding. */
-  signUp: (email: string) => void;
+  signUp: (email: string, token: string) => void;
+  signOut: () => void;
   completeOnboarding: (
     patch: Pick<
       Profile,
@@ -236,18 +240,34 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
   );
 
   const signIn = useCallback(
-    (email: string) => {
-      updateProfile({ loggedIn: true, email, onboarded: true });
+    // The token comes from the server and is what proves the session; the
+    // password is never held here, and never was.
+    (email: string, token: string) => {
+      updateProfile({
+        loggedIn: true,
+        email,
+        sessionToken: token,
+        onboarded: true,
+      });
     },
     [updateProfile],
   );
 
   const signUp = useCallback(
-    (email: string) => {
-      updateProfile({ loggedIn: true, email, onboarded: false });
+    (email: string, token: string) => {
+      updateProfile({
+        loggedIn: true,
+        email,
+        sessionToken: token,
+        onboarded: false,
+      });
     },
     [updateProfile],
   );
+
+  const signOut = useCallback(() => {
+    updateProfile({ loggedIn: false, sessionToken: '' });
+  }, [updateProfile]);
 
   const completeOnboarding = useCallback(
     (
@@ -277,9 +297,18 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
       updateProfile,
       signIn,
       signUp,
+      signOut,
       completeOnboarding,
     }),
-    [ready, profile, updateProfile, signIn, signUp, completeOnboarding],
+    [
+      ready,
+      profile,
+      updateProfile,
+      signIn,
+      signUp,
+      signOut,
+      completeOnboarding,
+    ],
   );
 
   return (

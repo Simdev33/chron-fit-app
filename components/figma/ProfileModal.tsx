@@ -11,6 +11,7 @@ import {
   Pill,
   Plus,
   Syringe,
+  LogOut,
   Trash2,
   Wrench,
 } from 'lucide-react-native';
@@ -135,7 +136,7 @@ export function ProfileModal({
   const p = usePalette();
   const insets = useSafeAreaInsets();
   const keyboardHeight = useKeyboardHeight();
-  const { profile, updateProfile } = useProfile();
+  const { profile, updateProfile, signOut } = useProfile();
   const { log, addMedication, removeMedication } = useHealthLog();
   const remission = profile.phase === 'remission';
 
@@ -1511,6 +1512,30 @@ export function ProfileModal({
               </LinearGradient>
             </Pressable>
 
+            {profile.loggedIn ? (
+              <Pressable
+                onPress={() =>
+                  confirmDestructive({
+                    title: 'Kijelentkezés',
+                    message:
+                      'A naplód és a beállításaid ezen az eszközön maradnak. Ugyanezzel az email címmel bármikor visszaléphetsz.',
+                    confirmLabel: 'Kijelentkezés',
+                    onConfirm: () => {
+                      signOut();
+                      onClose();
+                    },
+                  })
+                }
+                accessibilityRole="button"
+                style={({ pressed }) => [
+                  styles.signOutBtn,
+                  pressed && { opacity: 0.7 },
+                ]}>
+                <LogOut size={15} color="#F87171" />
+                <Text style={styles.signOutLabel}>Kijelentkezés</Text>
+              </Pressable>
+            ) : null}
+
             <DeveloperCard onClose={flushAndClose} />
           </View>
         </ScrollView>
@@ -1791,6 +1816,22 @@ function DeveloperCard({ onClose }: { onClose: () => void }) {
 }
 
 const styles = StyleSheet.create({
+  signOutBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(248,113,113,0.5)',
+    backgroundColor: 'rgba(248,113,113,0.10)',
+  },
+  signOutLabel: {
+    fontFamily: font.display,
+    fontSize: 15,
+    color: '#F87171',
+  },
   devCard: {
     borderWidth: 1,
     borderStyle: 'dashed',
