@@ -213,7 +213,13 @@ export async function sendVerificationEmail(email: string, code: string) {
   });
 
   if (!response.ok) {
-    throw new Error(`resend-${response.status}`);
+    // Resend explains refusals in the body -- an unverified sending domain
+    // reads very differently from a bad key, and the status alone hides that.
+    // It describes the account, never the recipient or the code.
+    const detail = await response.text().catch(() => '');
+    throw new Error(
+      `resend-${response.status} ${detail.slice(0, 200)}`.trim(),
+    );
   }
 }
 

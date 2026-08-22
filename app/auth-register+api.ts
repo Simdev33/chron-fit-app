@@ -82,6 +82,23 @@ export async function POST(request: Request) {
     return json({ sent: true });
   } catch (error) {
     logApiFailure('auth-register', error);
+
+    // A refused recipient is a setup problem, not an outage, and the generic
+    // message sends you log diving for it. Users see the plain sentence;
+    // outside production the actual reason comes through.
+    const detail = error instanceof Error ? error.message : '';
+    if (detail.startsWith('resend-403')) {
+      return json(
+        {
+          error:
+            process.env.NODE_ENV === 'production'
+              ? 'Erre a címre most nem tudunk levelet küldeni.'
+              : `A Resend elutasította a küldést: ${detail.slice(0, 300)}`,
+        },
+        502,
+      );
+    }
+
     return json(
       { error: 'A regisztráció most nem érhető el. Próbáld újra később.' },
       502,
