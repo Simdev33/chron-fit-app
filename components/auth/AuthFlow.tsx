@@ -1,5 +1,7 @@
 import {
+  confirmPasswordReset,
   login,
+  requestPasswordReset,
   requestSignupCode,
   verifySignupCode,
 } from '@/utils/authApi';
@@ -31,7 +33,32 @@ import { VitalityTree } from '@/components/figma/VitalityTree';
 import { font, violet } from '@/constants/figma';
 import { useProfile } from '@/context/ProfileContext';
 
-type Screen = 'welcome' | 'login' | 'signup' | 'code';
+type Screen =
+  | 'welcome'
+  | 'login'
+  | 'signup'
+  | 'code'
+  /** Csak az email címet kérjük, hogy kimenjen a visszaállító kód. */
+  | 'forgot'
+  /** Kód + új jelszó. */
+  | 'reset';
+
+const TITLES: Partial<Record<Screen, string>> = {
+  login: 'Üdv újra!',
+  signup: 'Fiók létrehozása',
+  code: 'Írd be a kódot',
+  forgot: 'Elfelejtett jelszó',
+  reset: 'Új jelszó',
+};
+
+const SUBTITLES: Partial<Record<Screen, string>> = {
+  login: 'Jelentkezz be a folytatáshoz.',
+  signup: 'Csak egy email cím és egy jelszó kell hozzá.',
+  code: 'Küldtünk egy hat számjegyű kódot emailben. A kód 10 percig érvényes.',
+  forgot:
+    'Add meg az email címed, és küldünk egy kódot az új jelszó beállításához.',
+  reset: 'Írd be a kapott kódot, és add meg az új jelszavad.',
+};
 
 function isValidEmail(email: string): boolean {
   return /^\S+@\S+\.\S+$/.test(email.trim());
@@ -93,6 +120,62 @@ export function AuthFlow({
     } catch (caught) {
       setError(
         caught instanceof Error ? caught.message : 'A művelet nem sikerült.',
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const requestReset = async () => {
+    if (busy) return;
+    if (!isValidEmail(email)) {
+      setError('Adj meg egy érvényes email címet.');
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await requestPasswordReset(email.trim());
+      setScreen('reset');
+      setCode('');
+      setPassword('');
+      setNotice(
+        `Ha tartozik fiók ehhez a címhez, elküldtük a kódot: ${email.trim()}`,
+      );
+    } catch (caught) {
+      setError(
+        caught instanceof Error ? caught.message : 'A kérés nem sikerült.',
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const submitReset = async () => {
+    if (busy) return;
+    if (code.length !== 6) {
+      setError('A kód hat számjegyű.');
+      return;
+    }
+    if (password.length < 8) {
+      setError('Az új jelszó legyen legalább 8 karakter.');
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const session = await confirmPasswordReset(
+        email.trim(),
+        code,
+        password,
+      );
+      setPassword('');
+      signIn(session.email, session.token);
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : 'A visszaállítás nem sikerült.',
       );
     } finally {
       setBusy(false);
@@ -222,21 +305,13 @@ export function AuthFlow({
               </Pressable>
 
               <Text style={[styles.formTitle, { color: p.text }]}>
-                {screen === 'login'
-                  ? 'Üdv újra!'
-                  : screen === 'code'
-                    ? 'Írd be a kódot'
-                    : 'Fiók létrehozása'}
+                {TITLES[screen] ?? ''}
               </Text>
               <Text style={[styles.formSub, { color: p.muted }]}>
-                {screen === 'login'
-                  ? 'Jelentkezz be a folytatáshoz.'
-                  : screen === 'code'
-                    ? 'Küldtünk egy hat számjegyű kódot emailben. A kód 10 percig érvényes.'
-                    : 'Csak egy email cím és egy jelszó kell hozzá.'}
+                {SUBTITLES[screen] ?? ''}
               </Text>
 
-              {screen === 'code' ? (
+              {screen === 'code' || screen === 'reset' ? (
                 <View style={{ gap: 12, marginTop: 24 }}>
                   {notice ? (
                     <Text
@@ -272,6 +347,31 @@ export function AuthFlow({
                     ]}
                   />
 
+                  {screen === 'reset' ? (
+                    <View style={inputWrapStyle}>
+                      <Lock size={16} color={p.muted} />
+                      <TextInput
+                        value={password}
+                        onChangeText={setPassword}
+                        editable={!busy}
+                        placeholder="Új jelszó"
+                        placeholderTextColor={p.placeholder}
+                        secureTextEntry={!showPassword}
+                        autoCapitalize="none"
+                        style={[styles.input, { color: p.text }]}
+                      />
+                      <Pressable
+                        onPress={() => setShowPassword((value) => !value)}
+                        hitSlop={8}>
+                        {showPassword ? (
+                          <EyeOff size={16} color={p.muted} />
+                        ) : (
+                          <Eye size={16} color={p.muted} />
+                        )}
+                      </Pressable>
+                    </View>
+                  ) : null}
+
                   {error ? (
                     <Text
                       style={{
@@ -284,7 +384,7 @@ export function AuthFlow({
                   ) : null}
 
                   <Pressable
-                    onPress={submitCode}
+                    onPress={screen === 'reset' ? submitReset : submitCode}
                     disabled={busy || code.length !== 6}
                     style={({ pressed }) => [
                       { borderRadius: 999, overflow: 'hidden', marginTop: 8 },
@@ -301,13 +401,17 @@ export function AuthFlow({
                       {busy ? (
                         <ActivityIndicator color="#fff" />
                       ) : (
-                        <Text style={styles.primaryLabel}>Megerősítés</Text>
+                        <Text style={styles.primaryLabel}>
+                          {screen === 'reset'
+                            ? 'Jelszó mentése'
+                            : 'Megerősítés'}
+                        </Text>
                       )}
                     </LinearGradient>
                   </Pressable>
 
                   <Pressable
-                    onPress={resend}
+                    onPress={screen === 'reset' ? requestReset : resend}
                     disabled={busy}
                     style={{ alignSelf: 'center', padding: 8 }}>
                     <Text
@@ -358,6 +462,8 @@ export function AuthFlow({
                   </Pressable>
                 </View>
 
+                {screen === 'forgot' ? null : (
+                  <>
                 {screen === 'signup' ? (
                   <View style={styles.pwHintRow}>
                     <View
@@ -379,6 +485,8 @@ export function AuthFlow({
                     </Text>
                   </View>
                 ) : null}
+                  </>
+                )}
 
                 {error ? (
                   <Text
@@ -392,7 +500,7 @@ export function AuthFlow({
                 ) : null}
 
                 <Pressable
-                  onPress={submit}
+                  onPress={screen === 'forgot' ? requestReset : submit}
                   style={({ pressed }) => [
                     { borderRadius: 999, overflow: 'hidden', marginTop: 8 },
                     pressed && { transform: [{ scale: 0.97 }] },
@@ -406,11 +514,30 @@ export function AuthFlow({
                       <ActivityIndicator color="#fff" />
                     ) : (
                       <Text style={styles.primaryLabel}>
-                        {screen === 'login' ? 'Bejelentkezés' : 'Regisztráció'}
+                        {screen === 'login'
+                          ? 'Bejelentkezés'
+                          : screen === 'forgot'
+                            ? 'Kód kérése'
+                            : 'Regisztráció'}
                       </Text>
                     )}
                   </LinearGradient>
                 </Pressable>
+
+                {screen === 'login' ? (
+                  <Pressable
+                    onPress={() => switchTo('forgot')}
+                    style={{ alignSelf: 'center', padding: 8 }}>
+                    <Text
+                      style={{
+                        fontSize: 13,
+                        fontFamily: font.bodyMedium,
+                        color: violet[400],
+                      }}>
+                      Elfelejtetted a jelszavad?
+                    </Text>
+                  </Pressable>
+                ) : null}
 
                 <Pressable
                   onPress={() =>

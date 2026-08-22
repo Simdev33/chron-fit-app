@@ -171,10 +171,38 @@ export async function supabaseQuery<T>(
 /* Resend                                                              */
 /* ------------------------------------------------------------------ */
 
-export async function sendVerificationEmail(email: string, code: string) {
+type CodeMail = {
+  subject: string;
+  heading: string;
+  lead: string;
+  footer: string;
+};
+
+const SIGNUP_MAIL: CodeMail = {
+  subject: 'a CrohnSync megerősítő kódod',
+  heading: 'A megerősítő kódod',
+  lead: 'Írd be ezt a kódot a CrohnSync alkalmazásban:',
+  footer:
+    'A kód 10 percig érvényes. Ha nem te kérted, hagyd figyelmen kívül ezt a levelet — enélkül a fiók nem jön létre.',
+};
+
+const RESET_MAIL: CodeMail = {
+  subject: 'a CrohnSync jelszó-visszaállító kódod',
+  heading: 'Jelszó visszaállítása',
+  lead: 'Írd be ezt a kódot az alkalmazásban, majd add meg az új jelszavad:',
+  footer:
+    'A kód 10 percig érvényes. Ha nem te kérted, hagyd figyelmen kívül ezt a levelet — a jelszavad ettől nem változik meg.',
+};
+
+export async function sendVerificationEmail(
+  email: string,
+  code: string,
+  kind: 'signup' | 'reset' = 'signup',
+) {
   const key = process.env.RESEND_API_KEY;
   if (!key) throw new Error('resend-not-configured');
 
+  const copy = kind === 'reset' ? RESET_MAIL : SIGNUP_MAIL;
   const from = process.env.RESEND_FROM || 'CrohnSync <onboarding@resend.dev>';
 
   const response = await fetch('https://api.resend.com/emails', {
@@ -186,26 +214,21 @@ export async function sendVerificationEmail(email: string, code: string) {
     body: JSON.stringify({
       from,
       to: [email],
-      subject: `${code} — a CrohnSync megerősítő kódod`,
-      text: [
-        'Szia!',
-        '',
-        `A CrohnSync regisztrációdhoz tartozó kód: ${code}`,
-        '',
-        'A kód 10 percig érvényes. Ha nem te kérted, hagyd figyelmen kívül ezt a levelet — enélkül a fiók nem jön létre.',
-      ].join('\n'),
+      subject: `${code} — ${copy.subject}`,
+      text: ['Szia!', '', `${copy.lead} ${code}`, '', copy.footer].join(
+        '\n',
+      ),
       html: `
         <div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;max-width:420px;margin:0 auto;padding:24px;color:#1A0D35">
-          <h1 style="font-size:18px;margin:0 0 16px">A megerősítő kódod</h1>
+          <h1 style="font-size:18px;margin:0 0 16px">${copy.heading}</h1>
           <p style="font-size:14px;line-height:20px;margin:0 0 20px;color:#4b3b6b">
-            Írd be ezt a kódot a CrohnSync alkalmazásban:
+            ${copy.lead}
           </p>
           <div style="font-size:32px;letter-spacing:8px;font-weight:700;text-align:center;padding:16px;background:#F5F0FF;border-radius:12px;color:#6D28D9">
             ${code}
           </div>
           <p style="font-size:12px;line-height:18px;margin:20px 0 0;color:#7c6a9c">
-            A kód 10 percig érvényes. Ha nem te kérted, hagyd figyelmen kívül
-            ezt a levelet — enélkül a fiók nem jön létre.
+            ${copy.footer}
           </p>
         </div>
       `,

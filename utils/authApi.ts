@@ -58,3 +58,19 @@ export function verifySignupCode(email: string, code: string) {
 export function login(email: string, password: string) {
   return post<AuthSession>('auth-login', { email, password });
 }
+
+/**
+ * Answers the same whether or not the address has an account, so the reply
+ * cannot be used to find out who is a user here.
+ */
+export function requestPasswordReset(email: string) {
+  return post<{ sent: true }>('auth-reset-request', { email });
+}
+
+export function confirmPasswordReset(
+  email: string,
+  code: string,
+  password: string,
+) {
+  return post<AuthSession>('auth-reset-confirm', { email, code, password });
+}
