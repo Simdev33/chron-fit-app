@@ -81,8 +81,14 @@ function RootLayoutNav() {
     return null;
   }
 
+  // The splash asks for a name, so it belongs to a first run only. Keying it
+  // on local state alone sent anyone who signed out back through it, because
+  // that state starts false on every launch -- including launches that began
+  // already signed in.
+  const needsIntro = !introDone && !profile.name.trim();
+
   let content: React.ReactNode;
-  if (!profile.loggedIn && !introDone) {
+  if (!profile.loggedIn && needsIntro) {
     content = (
       <WelcomeSplash
         onDone={(name) => {
@@ -92,7 +98,10 @@ function RootLayoutNav() {
       />
     );
   } else if (!profile.loggedIn) {
-    content = <AuthFlow initialScreen="signup" />;
+    // Someone who has been here before is signing back in, not signing up.
+    content = (
+      <AuthFlow initialScreen={profile.name.trim() ? 'login' : 'signup'} />
+    );
   } else if (!profile.onboarded) {
     content = <OnboardingFlow />;
   } else {

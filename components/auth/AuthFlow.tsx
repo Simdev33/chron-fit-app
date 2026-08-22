@@ -440,6 +440,9 @@ export function AuthFlow({
                     style={[styles.input, { color: p.text }]}
                   />
                 </View>
+                {/* A visszaállítás kérésekor csak a címre van szükség. */}
+                {screen === 'forgot' ? null : (
+                  <>
                 <View style={inputWrapStyle}>
                   <Lock size={16} color={p.muted} />
                   <TextInput
@@ -462,8 +465,6 @@ export function AuthFlow({
                   </Pressable>
                 </View>
 
-                {screen === 'forgot' ? null : (
-                  <>
                 {screen === 'signup' ? (
                   <View style={styles.pwHintRow}>
                     <View
